@@ -1,0 +1,25 @@
+# Môi trường ảo Python
+venv/
+env/
+.venv/
+
+# Cấu hình bảo mật (Tuyệt đối không push lên Git)
+.env
+
+# Files rác của Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Logs & Data tạm
+*.log
+data/
+logs/
+
+# Thư mục IDE
+.vscode/
+.idea/

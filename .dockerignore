@@ -1,0 +1,23 @@
+# Giống hệt Gitignore, không đưa rác vào Docker Build Context
+venv/
+env/
+.venv/
+
+# Không đưa cấu hình máy local vào Container (Container nên dùng biến môi trường riêng)
+.env
+
+# Files rác của Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Cấu hình Git
+.git/
+.gitignore
+
+# Files rác khác
+.vscode/
+.idea/
+*.md
+docs/
