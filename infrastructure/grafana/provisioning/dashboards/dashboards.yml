@@ -1,0 +1,53 @@
+# ============================================================
+# FILE: dashboards.yml
+# MỤC ĐÍCH: Khai báo cho Grafana biết "file dashboard JSON nằm ở đâu"
+# TƯƠNG TỰ: Bạn nói với Grafana: "Ê, vào thư mục này mà đọc file JSON,
+#            bên trong có bản thiết kế dashboard, cứ tự tạo đi"
+# ============================================================
+
+# Phiên bản cú pháp của file provisioning (luôn để 1)
+apiVersion: 1
+
+providers:
+    # "name" — Tên nhóm dashboard (chỉ để phân biệt, hiện trên log)
+  - name: 'TradeStream Dashboards'
+
+    # "orgId" — ID của tổ chức trong Grafana (mặc định là 1)
+    # Grafana hỗ trợ multi-tenant (nhiều tổ chức dùng chung 1 server)
+    # Đối với dự án cá nhân, luôn để 1
+    orgId: 1
+
+    # "folder" — Tên thư mục trên giao diện Grafana để nhóm các dashboard
+    # Bạn sẽ thấy: Dashboards > TradeStream > [tên dashboard]
+    folder: 'TradeStream'
+
+    # "type" — Kiểu nguồn dashboard:
+    #   "file" = đọc từ file JSON trên ổ cứng
+    #   "api"  = đọc từ API bên ngoài (ít dùng)
+    type: file
+
+    # "disableDeletion" — Có cho phép XÓA dashboard trên giao diện web không?
+    #   false = cho phép xóa (linh hoạt khi đang phát triển)
+    #   true  = KHÔNG cho xóa (dùng trong production để bảo vệ dashboard)
+    disableDeletion: false
+
+    # "updateIntervalSeconds" — Mỗi bao nhiêu giây, Grafana quét lại thư mục
+    # để tìm file JSON mới hoặc file đã thay đổi
+    # 10 giây = cứ 10 giây Grafana kiểm tra 1 lần xem có gì mới không
+    # ⚠️ Tuy nhiên trong thực tế, nếu dashboard đã tồn tại trong DB nội bộ
+    #    của Grafana, nó sẽ KHÔNG ghi đè trừ khi bạn tăng "version" trong JSON
+    updateIntervalSeconds: 10
+
+    # "allowUiUpdates" — Cho phép chỉnh sửa dashboard trên giao diện web?
+    #   true  = sửa thoải mái trên UI (nhưng khi restart sẽ bị ghi đè bởi file JSON)
+    #   false = chỉ đọc, không sửa được trên UI
+    allowUiUpdates: true
+
+    # "options" — Cấu hình chi tiết cho kiểu "file"
+    options:
+      # "path" — Đường dẫn BÊN TRONG container Docker
+      # (Được ánh xạ từ máy host qua volumes trong docker-compose.yml)
+      # Máy host: ./infrastructure/grafana/dashboards/
+      #     ↓ ánh xạ vào ↓
+      # Container: /var/lib/grafana/dashboards/
+      path: /var/lib/grafana/dashboards

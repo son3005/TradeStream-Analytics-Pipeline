@@ -4,7 +4,9 @@ import json
 import logging
 import os
 import sys
+import time
 from dotenv import load_dotenv
+from confluent_kafka import Producer
 
 # 1. Cấu hình logging
 logging.basicConfig(
@@ -19,7 +21,21 @@ sys.stdout.reconfigure(encoding='utf-8')
 # 2. Tải cấu hình từ .env
 load_dotenv()
 YAHOO_URL = os.getenv('YAHOO_FINANCE_URL', 'https://query1.finance.yahoo.com/v8/finance/chart/')
+KAFKA_BROKER_URL = os.getenv('KAFKA_BROKER_URL', 'localhost:9092')
+KAFKA_TOPIC = 'stock_trades'
 SYMBOL = "AAPL" # Mã chứng khoán Apple
+
+# 3. Cấu hình Kafka Producer
+producer_conf = {
+    'bootstrap.servers': KAFKA_BROKER_URL,
+    'client.id': 'stock-producer'
+}
+producer = Producer(producer_conf)
+
+def delivery_report(err, msg):
+    """Callback function để xác nhận Kafka đã nhận message chưa"""
+    if err is not None:
+        logger.error(f"❌ Lỗi gửi message: {err}")
 
 async def fetch_stock_price(session):
     """Gửi yêu cầu REST API để lấy giá cổ phiếu"""
@@ -42,7 +58,28 @@ async def fetch_stock_price(session):
     async with session.get(url, headers=headers) as response:
         if response.status == 200:
             data = await response.json() 
-            logger.info(data['chart']['result'][0]['meta']['regularMarketPrice']) 
+            price = data['chart']['result'][0]['meta']['regularMarketPrice']
+            
+            # 4. Định nghĩa Data Schema (Cấu trúc JSON)
+            kafka_message = {
+                'symbol': SYMBOL,
+                'price': float(price),
+                'quantity': 1.0, # Yahoo API cơ bản không có khối lượng real-time, ta giả lập là 1
+                'trade_time': int(time.time() * 1000) # Unix timestamp (milliseconds)
+            }
+            
+            # 5. Gửi dữ liệu vào Kafka
+            producer.produce(
+                topic=KAFKA_TOPIC,
+                key=kafka_message['symbol'],
+                value=json.dumps(kafka_message),
+                callback=delivery_report
+            )
+            producer.poll(0)
+            
+            logger.info(f"📈 Đã gửi Kafka -> {kafka_message['symbol']}: {kafka_message['price']} USD")
+        else:
+            logger.warning(f"⚠️ Lỗi API Yahoo: HTTP {response.status}") 
 
 async def stream_stock_data():
     """Hàm chạy liên tục, mỗi 2 giây gửi 1 request lấy giá (Giả lập Streaming)"""
@@ -60,4 +97,6 @@ if __name__ == '__main__':
     try:
         asyncio.run(stream_stock_data())
     except KeyboardInterrupt:
+        logger.info("Đang xả nốt các messages còn tồn đọng trong queue...")
+        producer.flush()
         logger.info("Đã dừng chương trình chứng khoán an toàn.")

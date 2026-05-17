@@ -1,11 +1,10 @@
-version: '3.8'
-
 # ==========================================
 # TRADE STREAM ANALYTICS PIPELINE
 # ==========================================
 # Hướng dẫn chạy (chỉ bật những profile cần thiết để tiết kiệm RAM):
-# 1. Bật Kafka:      docker compose --profile core up -d
-# 2. Tắt tất cả:     docker compose --profile core down
+# 1. Bật Kafka:         docker compose --profile core up -d
+# 2. Thêm Spark:         docker compose --profile core --profile processing up -d
+# 3. Tắt tất cả:       docker compose --profile core --profile processing down
 # ==========================================
 
 services:
@@ -93,6 +92,221 @@ services:
       restart_policy:
         condition: on-failure
 
+  # -----------------------------------
+  # PROFILE: PROCESSING (SPARK STACK)
+  # -----------------------------------
+  spark-master:
+    image: apache/spark:3.5.3
+    container_name: spark-master
+    profiles: ["processing"]
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    environment:
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8181
+    ports:
+      - "8181:8181"   # Spark Master Web UI
+      - "7077:7077"   # Spark Master port cho Worker kết nối
+    networks:
+      - tradestream-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  spark-worker:
+    image: apache/spark:3.5.3
+    container_name: spark-worker
+    profiles: ["processing"]
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_WEBUI_PORT=8182
+    ports:
+      - "8182:8182"   # Spark Worker Web UI
+    networks:
+      - tradestream-net
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: timescaledb
+    profiles: ["storage"]
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./infrastructure/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - tradestream-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    profiles: ["dashboard"]
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: tradestream
+      GF_INSTALL_PLUGINS: grafana-clock-panel
+    networks:
+      - tradestream-net
+    depends_on:
+      - timescaledb
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards
+
+  # -----------------------------------
+  # PROFILE: ORCHESTRATION (AIRFLOW)
+  # -----------------------------------
+  # Airflow = "Quản đốc nhà máy"
+  # Nó KHÔNG xử lý dữ liệu, nó chỉ LÊN LỊCH và GIÁM SÁT các script khác chạy.
+
+  # Container 1/4: Database riêng cho Airflow
+  # Airflow cần 1 database để ghi nhớ: "DAG nào đã chạy? Task nào lỗi? Lúc mấy giờ?"
+  # Chúng ta TÁCH RIÊNG database này khỏi TimescaleDB (chứa dữ liệu crypto)
+  # → Nếu xóa DB crypto để test, lịch sử Airflow vẫn còn nguyên
+  airflow-metadata:
+    image: postgres:14
+    container_name: airflow-metadata
+    profiles: ["orchestration"]
+    environment:
+      # Tên database, user, password — CHỈ dùng cho Airflow, không liên quan tới crypto data
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+    volumes:
+      # Lưu dữ liệu metadata vào volume để không mất khi restart container
+      - airflow_metadata:/var/lib/postgresql/data
+    networks:
+      - tradestream-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Container 2/4: Khởi tạo Airflow (chạy 1 LẦN DUY NHẤT rồi tự tắt)
+  # Giống như file init.sql của TimescaleDB — tạo bảng, tạo tài khoản admin
+  # Sau khi hoàn thành, container này sẽ tự thoát (exit 0)
+  airflow-init:
+    image: apache/airflow:2.10.5
+    container_name: airflow-init
+    profiles: ["orchestration"]
+    depends_on:
+      airflow-metadata:
+        condition: service_healthy
+    environment:
+      # Chuỗi kết nối tới database metadata (giống jdbc URL trong Java)
+      # Format: postgresql+psycopg2://user:password@hostname:port/database
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-metadata:5432/airflow
+
+      # Executor quyết định AI sẽ chạy task:
+      # - LocalExecutor: Scheduler tự chạy luôn (đơn giản, không cần Worker riêng)
+      # - CeleryExecutor: Scheduler giao việc cho Worker qua Redis (phức tạp hơn)
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+
+      # Tắt load DAG mẫu (Airflow đi kèm ~20 DAG demo, rất rối cho người mới)
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    # Lệnh chạy: tạo bảng trong DB → tạo tài khoản admin
+    # "airflow db migrate" = tạo/cập nhật schema database
+    # "airflow users create" = tạo tài khoản đăng nhập web UI
+    command: >
+      bash -c "
+        airflow db migrate &&
+        airflow users create
+          --username admin
+          --password airflow
+          --firstname Son
+          --lastname DE
+          --role Admin
+          --email admin@tradestream.local
+      "
+    networks:
+      - tradestream-net
+
+  # Container 3/4: Giao diện Web (MÀN HÌNH GIÁM SÁT)
+  # Bạn mở trình duyệt → localhost:8085 → nhìn thấy DAG, task, log
+  # Container này KHÔNG chạy task, nó chỉ ĐỌC từ metadata DB và HIỂN THỊ
+  airflow-webserver:
+    image: apache/airflow:2.10.5
+    container_name: airflow-webserver
+    profiles: ["orchestration"]
+    depends_on:
+      airflow-metadata:
+        condition: service_healthy
+    ports:
+      # Ánh xạ port 8085 trên máy bạn → port 8080 bên trong container
+      # Tại sao 8085? Vì 8080 đã bị Kafka-UI chiếm rồi
+      - "8085:8080"
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-metadata:5432/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+
+      # Tắt cảnh báo bảo mật (chỉ dùng trong môi trường học tập)
+      # Trong production phải tạo secret key riêng
+      AIRFLOW__WEBSERVER__SECRET_KEY: tradestream-secret-key
+    volumes:
+      # Ánh xạ thư mục dags/ trên máy bạn vào container
+      # Khi bạn viết file Python trong dags/ → Airflow thấy ngay
+      - ./dags:/opt/airflow/dags
+    command: airflow webserver
+    networks:
+      - tradestream-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # Container 4/4: Bộ não (SCHEDULER)
+  # Liên tục quét: "Bây giờ mấy giờ? Có DAG nào tới lịch chạy chưa?"
+  # Với LocalExecutor: Scheduler VỪA lên lịch VỪA tự chạy task luôn
+  # (không cần container Worker riêng)
+  airflow-scheduler:
+    image: apache/airflow:2.10.5
+    container_name: airflow-scheduler
+    profiles: ["orchestration"]
+    depends_on:
+      airflow-metadata:
+        condition: service_healthy
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-metadata:5432/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__WEBSERVER__SECRET_KEY: tradestream-secret-key
+    volumes:
+      # QUAN TRỌNG: Scheduler PHẢI nhìn thấy cùng thư mục dags/ với Webserver
+      # Nếu không → Webserver thấy DAG nhưng Scheduler không biết → task không chạy
+      - ./dags:/opt/airflow/dags
+    command: airflow scheduler
+    networks:
+      - tradestream-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
 networks:
   tradestream-net:
     name: tradestream-net
@@ -102,3 +316,8 @@ volumes:
   zookeeper_data:
   zookeeper_log:
   kafka_data:
+  timescaledb_data:
+  grafana_data:
+  # Volume mới cho database nội bộ của Airflow
+  airflow_metadata:
+

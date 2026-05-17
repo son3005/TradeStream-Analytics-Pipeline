@@ -1,0 +1,102 @@
+# ============================================================
+# FILE: datasource.yml
+# MỤC ĐÍCH: Khai báo cho Grafana biết "nguồn dữ liệu" nằm ở đâu
+# TƯƠNG TỰ: Như việc bạn cấu hình DBeaver/pgAdmin để kết nối tới PostgreSQL
+#            nhưng thay vì làm bằng tay trên giao diện, bạn viết vào file YAML
+#            → Grafana sẽ tự động đọc file này khi khởi động
+# ============================================================
+
+# Phiên bản cú pháp của file provisioning (luôn để 1)
+apiVersion: 1
+
+datasources:
+    # "name" — Tên hiển thị trên giao diện Grafana (giống label cho con người đọc)
+  - name: TimescaleDB
+
+    # "uid" — Mã định danh DUY NHẤT (unique ID) của datasource này
+    # Dashboard JSON sẽ dùng uid này để biết "tôi lấy dữ liệu từ nguồn nào"
+    # ⚠️ QUAN TRỌNG: uid trong file này PHẢI KHỚP với uid trong file dashboard JSON
+    # Nếu không khớp → Grafana sẽ báo lỗi "datasource not found" → No data
+    uid: TimescaleDB
+
+    # "type" — Loại plugin mà Grafana sẽ dùng để kết nối
+    # Grafana v11+ đổi tên plugin PostgreSQL thành "grafana-postgresql-datasource"
+    # (Phiên bản cũ v9 trở về trước dùng "postgres" — KHÔNG còn hoạt động)
+    type: grafana-postgresql-datasource
+
+    # "access" — Ai là người thực sự gửi câu SQL tới Database?
+    #
+    # ┌─── Chế độ "proxy" (AN TOÀN ✅) ───────────────────────────┐
+    # │                                                            │
+    # │  [Browser bạn] ──HTTP──▶ [Grafana Server] ──SQL──▶ [DB]   │
+    # │                                                            │
+    # │  Browser chỉ gửi yêu cầu "tôi muốn xem biểu đồ" tới     │
+    # │  Grafana Server. Grafana Server là người gửi câu SQL       │
+    # │  tới Database. Browser KHÔNG BAO GIỜ biết địa chỉ DB.     │
+    # │  → DB có thể nằm trong mạng nội bộ, không cần mở ra      │
+    # │    internet. Hacker không thể tấn công DB từ bên ngoài.   │
+    # └───────────────────────────────────────────────────────────-┘
+    #
+    # ┌─── Chế độ "direct" (NGUY HIỂM ❌) ───────────────────────┐
+    # │                                                            │
+    # │  [Browser bạn] ──SQL──────────────────────────────▶ [DB]  │
+    # │                                                            │
+    # │  Browser gửi câu SQL TRỰC TIẾP tới Database.              │
+    # │  → Browser phải biết địa chỉ IP + port của DB             │
+    # │  → DB phải mở port ra internet để browser kết nối được    │
+    # │  → Ai cũng có thể thấy địa chỉ DB trong DevTools (F12)   │
+    # │  → Hacker có thể gửi câu SQL độc hại thẳng vào DB        │
+    # └───────────────────────────────────────────────────────────-┘
+    #
+    # Trong dự án này: Grafana và TimescaleDB cùng nằm trong Docker network.
+    # Grafana Server gọi tới "timescaledb:5432" qua mạng nội bộ Docker.
+    # Browser của bạn chỉ gọi tới Grafana qua port 3000, không hề biết DB ở đâu.
+    access: proxy
+
+    # "url" — Địa chỉ kết nối tới database
+    # "timescaledb" là tên container Docker (Docker tự phân giải thành IP nội bộ)
+    # "5432" là port mặc định của PostgreSQL
+    # ⚠️ Không dùng "localhost" vì Grafana chạy trong container riêng,
+    #     "localhost" sẽ trỏ về chính container Grafana chứ không phải DB
+    url: timescaledb:5432
+
+    # "user" — Tên user để đăng nhập vào PostgreSQL
+    user: postgres
+
+    # "database" — Tên database cấp cao (top-level, cho Grafana cũ đọc)
+    database: tradestream
+
+    # "secureJsonData" — Chứa thông tin BÍ MẬT (mật khẩu, token, API key...)
+    # Grafana sẽ MÃ HÓA các giá trị trong block này trước khi lưu vào ổ cứng
+    # → Không ai có thể đọc được mật khẩu từ file cấu hình
+    secureJsonData:
+      password: postgres
+
+    # "jsonData" — Chứa các cấu hình BỔ SUNG (không bí mật) cho plugin
+    jsonData:
+      # Grafana v11+ yêu cầu tên database PHẢI nằm trong jsonData
+      # (ngoài việc khai báo ở top-level phía trên)
+      database: tradestream
+
+      # Chế độ SSL khi kết nối DB:
+      #   "disable"  = không mã hóa (dùng trong Docker nội bộ)
+      #   "require"  = bắt buộc mã hóa (dùng khi DB ở internet/cloud)
+      sslmode: disable
+
+      # Phiên bản PostgreSQL (1400 = v14.x)
+      # Grafana cần biết để dùng đúng cú pháp SQL tương thích
+      postgresVersion: 1400
+
+      # Bật tính năng TimescaleDB (hỗ trợ time_bucket, continuous aggregates...)
+      # Nếu DB không cài TimescaleDB extension thì để false
+      timescaledb: true
+
+    # "isDefault" — Đánh dấu đây là datasource MẶC ĐỊNH
+    # Khi tạo panel mới, Grafana sẽ tự động chọn datasource này
+    # (Nếu có nhiều datasource, chỉ 1 cái được đặt true)
+    isDefault: true
+
+    # "editable" — Cho phép chỉnh sửa datasource này trên giao diện web
+    #   true  = người dùng có thể thay đổi URL, password... trên UI
+    #   false = khóa cứng, chỉ sửa được bằng cách sửa file YAML này
+    editable: true
