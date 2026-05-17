@@ -5,6 +5,7 @@ env/
 
 # Cấu hình bảo mật (Tuyệt đối không push lên Git)
 .env
+infrastructure/airflow/passwords.json
 
 # Files rác của Python
 __pycache__/

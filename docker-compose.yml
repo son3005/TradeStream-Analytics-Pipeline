@@ -141,7 +141,7 @@ services:
     container_name: timescaledb
     profiles: ["storage"]
     environment:
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -162,8 +162,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: tradestream
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
       GF_INSTALL_PLUGINS: grafana-clock-panel
     networks:
       - tradestream-net
@@ -190,9 +190,9 @@ services:
     profiles: ["orchestration"]
     environment:
       # Tên database, user, password — CHỈ dùng cho Airflow, không liên quan tới crypto data
-      POSTGRES_DB: airflow
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: ${AIRFLOW_DB_NAME}
+      POSTGRES_USER: ${AIRFLOW_DB_USER}
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD}
     volumes:
       # Lưu dữ liệu metadata vào volume để không mất khi restart container
       - airflow_metadata:/var/lib/postgresql/data
@@ -208,7 +208,7 @@ services:
   # Giống như file init.sql của TimescaleDB — tạo bảng, tạo tài khoản admin
   # Sau khi hoàn thành, container này sẽ tự thoát (exit 0)
   airflow-init:
-    image: apache/airflow:2.10.5
+    image: apache/airflow:3.2.1
     container_name: airflow-init
     profiles: ["orchestration"]
     depends_on:
@@ -217,7 +217,7 @@ services:
     environment:
       # Chuỗi kết nối tới database metadata (giống jdbc URL trong Java)
       # Format: postgresql+psycopg2://user:password@hostname:port/database
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-metadata:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_DB_CONN}
 
       # Executor quyết định AI sẽ chạy task:
       # - LocalExecutor: Scheduler tự chạy luôn (đơn giản, không cần Worker riêng)
@@ -230,16 +230,7 @@ services:
     # "airflow db migrate" = tạo/cập nhật schema database
     # "airflow users create" = tạo tài khoản đăng nhập web UI
     command: >
-      bash -c "
-        airflow db migrate &&
-        airflow users create
-          --username admin
-          --password airflow
-          --firstname Son
-          --lastname DE
-          --role Admin
-          --email admin@tradestream.local
-      "
+      bash -c "airflow db migrate"
     networks:
       - tradestream-net
 
@@ -247,7 +238,7 @@ services:
   # Bạn mở trình duyệt → localhost:8085 → nhìn thấy DAG, task, log
   # Container này KHÔNG chạy task, nó chỉ ĐỌC từ metadata DB và HIỂN THỊ
   airflow-webserver:
-    image: apache/airflow:2.10.5
+    image: apache/airflow:3.2.1
     container_name: airflow-webserver
     profiles: ["orchestration"]
     depends_on:
@@ -258,18 +249,29 @@ services:
       # Tại sao 8085? Vì 8080 đã bị Kafka-UI chiếm rồi
       - "8085:8080"
     environment:
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-metadata:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_DB_CONN}
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
 
-      # Tắt cảnh báo bảo mật (chỉ dùng trong môi trường học tập)
-      # Trong production phải tạo secret key riêng
-      AIRFLOW__WEBSERVER__SECRET_KEY: tradestream-secret-key
+      # Secret keys (giá trị thật nằm trong .env, KHÔNG hardcode ở đây)
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+      AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+
+      # Airflow 3.x dùng "Simple Auth Manager" — khai báo user bằng biến này
+      AIRFLOW__SIMPLE_AUTH_MANAGER__USERS: ${AIRFLOW_ADMIN_USERS}
+
+      # Trỏ tới file password cố định thay vì để Airflow tự sinh ngẫu nhiên
+      # File này nằm tại: infrastructure/airflow/passwords.json
+      # Muốn đổi pass → sửa file → restart container
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/passwords.json
     volumes:
-      # Ánh xạ thư mục dags/ trên máy bạn vào container
-      # Khi bạn viết file Python trong dags/ → Airflow thấy ngay
       - ./dags:/opt/airflow/dags
-    command: airflow webserver
+      # Mount file password vào container
+      - ./infrastructure/airflow/passwords.json:/opt/airflow/passwords.json
+    # Airflow 3.x đổi "webserver" → "api-server" (giao diện web + API gộp chung)
+    command: airflow api-server
     networks:
       - tradestream-net
     deploy:
@@ -283,20 +285,23 @@ services:
   # Với LocalExecutor: Scheduler VỪA lên lịch VỪA tự chạy task luôn
   # (không cần container Worker riêng)
   airflow-scheduler:
-    image: apache/airflow:2.10.5
+    image: apache/airflow:3.2.1
     container_name: airflow-scheduler
     profiles: ["orchestration"]
     depends_on:
       airflow-metadata:
         condition: service_healthy
     environment:
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-metadata:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_DB_CONN}
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-      AIRFLOW__WEBSERVER__SECRET_KEY: tradestream-secret-key
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+      AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+
+      # Scheduler cần biết API Server ở đâu để giao việc cho Worker
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
     volumes:
-      # QUAN TRỌNG: Scheduler PHẢI nhìn thấy cùng thư mục dags/ với Webserver
-      # Nếu không → Webserver thấy DAG nhưng Scheduler không biết → task không chạy
       - ./dags:/opt/airflow/dags
     command: airflow scheduler
     networks:
@@ -306,6 +311,36 @@ services:
         limits:
           cpus: '1.0'
           memory: 1G
+
+  # Container 5/5: Dag Processor (Airflow 3 mới có)
+  # Airflow 2: Scheduler tự đọc file DAG
+  # Airflow 3: Tách riêng → Dag Processor chuyên đọc file Python trong dags/
+  # Nếu không có container này → trang Dags sẽ trống (No Dags found)
+  airflow-dag-processor:
+    image: apache/airflow:3.2.1
+    container_name: airflow-dag-processor
+    profiles: ["orchestration"]
+    depends_on:
+      airflow-metadata:
+        condition: service_healthy
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_DB_CONN}
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+      AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
+    volumes:
+      - ./dags:/opt/airflow/dags
+    command: airflow dag-processor
+    networks:
+      - tradestream-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
 networks:
   tradestream-net:
