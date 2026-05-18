@@ -14,7 +14,7 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
-    profiles: ["core"]
+    profiles: [ "core" ]
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -39,7 +39,7 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka
-    profiles: ["core"]
+    profiles: [ "core" ]
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -72,7 +72,7 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
-    profiles: ["core"]
+    profiles: [ "core" ]
     depends_on:
       kafka:
         condition: service_healthy
@@ -98,15 +98,20 @@ services:
   spark-master:
     image: apache/spark:3.5.3
     container_name: spark-master
-    profiles: ["processing"]
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    profiles: [ "processing" ]
+    command: [ "/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master" ]
     environment:
       - SPARK_MASTER_HOST=spark-master
       - SPARK_MASTER_PORT=7077
       - SPARK_MASTER_WEBUI_PORT=8181
     ports:
-      - "8181:8181"   # Spark Master Web UI
-      - "7077:7077"   # Spark Master port cho Worker kết nối
+      - "8181:8181" # Spark Master Web UI
+      - "7077:7077" # Spark Master port cho Worker kết nối
+    volumes:
+      # Mount thư mục src vào Spark container (nơi có Java + Spark đầy đủ)
+      - ./src:/opt/airflow/src
+      # Mount JARs đã download sẵn, không cần tải lại mỗi lần chạy
+      - ./infrastructure/spark/jars:/opt/spark/user-jars
     networks:
       - tradestream-net
     deploy:
@@ -118,8 +123,8 @@ services:
   spark-worker:
     image: apache/spark:3.5.3
     container_name: spark-worker
-    profiles: ["processing"]
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    profiles: [ "processing" ]
+    command: [ "/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077" ]
     depends_on:
       - spark-master
     environment:
@@ -127,7 +132,7 @@ services:
       - SPARK_WORKER_CORES=2
       - SPARK_WORKER_WEBUI_PORT=8182
     ports:
-      - "8182:8182"   # Spark Worker Web UI
+      - "8182:8182" # Spark Worker Web UI
     networks:
       - tradestream-net
     deploy:
@@ -139,7 +144,7 @@ services:
   timescaledb:
     image: timescale/timescaledb:latest-pg14
     container_name: timescaledb
-    profiles: ["storage"]
+    profiles: [ "storage" ]
     environment:
       POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD}
     ports:
@@ -150,7 +155,7 @@ services:
     networks:
       - tradestream-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -158,7 +163,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
-    profiles: ["dashboard"]
+    profiles: [ "dashboard" ]
     ports:
       - "3000:3000"
     environment:
@@ -187,7 +192,7 @@ services:
   airflow-metadata:
     image: postgres:14
     container_name: airflow-metadata
-    profiles: ["orchestration"]
+    profiles: [ "orchestration" ]
     environment:
       # Tên database, user, password — CHỈ dùng cho Airflow, không liên quan tới crypto data
       POSTGRES_DB: ${AIRFLOW_DB_NAME}
@@ -199,7 +204,7 @@ services:
     networks:
       - tradestream-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      test: [ "CMD-SHELL", "pg_isready -U airflow" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -210,7 +215,7 @@ services:
   airflow-init:
     image: apache/airflow:3.2.1
     container_name: airflow-init
-    profiles: ["orchestration"]
+    profiles: [ "orchestration" ]
     depends_on:
       airflow-metadata:
         condition: service_healthy
@@ -240,7 +245,7 @@ services:
   airflow-webserver:
     image: apache/airflow:3.2.1
     container_name: airflow-webserver
-    profiles: ["orchestration"]
+    profiles: [ "orchestration" ]
     depends_on:
       airflow-metadata:
         condition: service_healthy
@@ -253,6 +258,9 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
+
+      # Cài đặt thêm thư viện Python cho Airflow khi khởi động
+      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3"
 
       # Secret keys (giá trị thật nằm trong .env, KHÔNG hardcode ở đây)
       AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
@@ -268,6 +276,8 @@ services:
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/passwords.json
     volumes:
       - ./dags:/opt/airflow/dags
+      # Mount thư mục src để Airflow gọi được các script Python & Spark
+      - ./src:/opt/airflow/src
       # Mount file password vào container
       - ./infrastructure/airflow/passwords.json:/opt/airflow/passwords.json
     # Airflow 3.x đổi "webserver" → "api-server" (giao diện web + API gộp chung)
@@ -287,7 +297,7 @@ services:
   airflow-scheduler:
     image: apache/airflow:3.2.1
     container_name: airflow-scheduler
-    profiles: ["orchestration"]
+    profiles: [ "orchestration" ]
     depends_on:
       airflow-metadata:
         condition: service_healthy
@@ -301,8 +311,19 @@ services:
 
       # Scheduler cần biết API Server ở đâu để giao việc cho Worker
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
+
+      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3"
+
+      # Biến môi trường cho DAGs (đọc từ .env)
+      YAHOO_FINANCE_URL: ${YAHOO_FINANCE_URL}
+      TIMESCALE_CONN: ${TIMESCALE_CONN}
     volumes:
       - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      # Mount config/ để DAGs đọc file symbols.json
+      - ./config:/opt/airflow/config
+      # Mount Docker socket để Airflow Scheduler có thể gọi 'docker exec' vào Spark container
+      - /var/run/docker.sock:/var/run/docker.sock
     command: airflow scheduler
     networks:
       - tradestream-net
@@ -319,7 +340,7 @@ services:
   airflow-dag-processor:
     image: apache/airflow:3.2.1
     container_name: airflow-dag-processor
-    profiles: ["orchestration"]
+    profiles: [ "orchestration" ]
     depends_on:
       airflow-metadata:
         condition: service_healthy
@@ -331,8 +352,12 @@ services:
       AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
+      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3"
     volumes:
       - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      # DAG processor cũng cần config/ vì nó parse file Python (đọc symbols.json)
+      - ./config:/opt/airflow/config
     command: airflow dag-processor
     networks:
       - tradestream-net
@@ -352,7 +377,7 @@ volumes:
   zookeeper_log:
   kafka_data:
   timescaledb_data:
-  grafana_data:
-  # Volume mới cho database nội bộ của Airflow
+  grafana_data: # Volume mới cho database nội bộ của Airflow
+
   airflow_metadata:
 

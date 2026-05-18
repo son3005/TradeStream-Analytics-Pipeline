@@ -1,0 +1,27 @@
+{
+    "_comment": "Danh sách mã cổ phiếu/crypto cần lấy giá hàng ngày",
+    "_usage": "Thêm/xóa symbol ở đây → DAG tự động cập nhật (không cần sửa code)",
+    
+    "symbols": [
+        {
+            "symbol": "BTC-USD",
+            "name": "Bitcoin",
+            "type": "crypto"
+        },
+        {
+            "symbol": "ETH-USD",
+            "name": "Ethereum",
+            "type": "crypto"
+        },
+        {
+            "symbol": "AAPL",
+            "name": "Apple",
+            "type": "stock"
+        },
+        {
+            "symbol": "MSFT",
+            "name": "Microsoft",
+            "type": "stock"
+        }
+    ]
+}

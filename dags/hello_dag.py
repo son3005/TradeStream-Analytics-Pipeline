@@ -10,8 +10,8 @@
 from airflow import DAG
 
 # "BashOperator" là loại công nhân chạy lệnh terminal
-# (Chúng ta đã học: cần chạy lệnh terminal → dùng BashOperator)
-from airflow.operators.bash import BashOperator
+# Airflow 3.x chuyển sang package providers (đường dẫn import mới)
+from airflow.providers.standard.operators.bash import BashOperator
 
 # "datetime" để khai báo ngày bắt đầu chạy DAG
 from datetime import datetime
