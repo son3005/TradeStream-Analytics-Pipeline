@@ -17,7 +17,7 @@
   },
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
+  "graphTooltip": 1,
   "id": null,
   "links": [],
   "panels": [
@@ -35,13 +35,12 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "Price (USD)",
             "axisPlacement": "auto",
             "barAlignment": 0,
-            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 10,
-            "gradientMode": "none",
+            "gradientMode": "opacity",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
@@ -71,10 +70,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
               }
             ]
           }
@@ -82,12 +77,101 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 12,
-        "w": 24,
+        "h": 10,
+        "w": 12,
         "x": 0,
         "y": 0
       },
       "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT fetch_date::timestamp AS \"time\", close_price AS \"Close Price\", symbol FROM daily_prices ORDER BY fetch_date ASC",
+          "refId": "A"
+        }
+      ],
+      "title": "Daily Asset Price Trend",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Volume",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "log"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3,
       "options": {
         "legend": {
           "calcs": [],
@@ -108,11 +192,11 @@
           },
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT window_start AS \"time\", vwap AS \"VWAP\", sma AS \"SMA\" FROM crypto_indicators WHERE symbol = 'BTCUSDT' ORDER BY window_start ASC",
+          "rawSql": "SELECT fetch_date::timestamp AS \"time\", volume AS \"Volume\", symbol FROM daily_prices ORDER BY fetch_date ASC",
           "refId": "A"
         }
       ],
-      "title": "BTC - VWAP & SMA Real-time",
+      "title": "Trading Volume (Log Scale)",
       "type": "timeseries"
     },
     {
@@ -146,10 +230,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 9,
+        "h": 10,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 10
       },
       "id": 2,
       "options": {
@@ -157,7 +241,9 @@
         "footer": {
           "countRows": false,
           "fields": "",
-          "reducer": ["sum"],
+          "reducer": [
+            "sum"
+          ],
           "show": false
         },
         "showHeader": true
@@ -170,27 +256,31 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT symbol, window_start, window_end, sma, vwap, trade_count FROM crypto_indicators ORDER BY window_start DESC LIMIT 50",
+          "rawSql": "SELECT symbol AS \"Symbol\", fetch_date AS \"Date\", open_price AS \"Open\", high_price AS \"High\", low_price AS \"Low\", close_price AS \"Close\", volume AS \"Volume\", currency AS \"Currency\", asset_type AS \"Asset Type\" FROM daily_prices ORDER BY fetch_date DESC, symbol ASC LIMIT 100",
           "refId": "A"
         }
       ],
-      "title": "Recent Indicators (Raw Table)",
+      "title": "Recent Trading Data (Raw Table)",
       "type": "table"
     }
   ],
   "refresh": "10s",
   "schemaVersion": 39,
-  "tags": ["crypto", "trading"],
+  "tags": [
+    "stock",
+    "crypto",
+    "trading"
+  ],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now-24h",
-    "to": "now+12h"
+    "from": "now-30d",
+    "to": "now"
   },
   "timepicker": {},
   "timezone": "utc",
   "title": "TradeStream Market Overview",
   "uid": "tradestream-overview",
-  "version": 1
+  "version": 2
 }

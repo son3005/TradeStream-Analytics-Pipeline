@@ -2,43 +2,53 @@
 
 ## Tổng quan Tiến độ
 - **Trạng thái**: Đang thực hiện
-- **Phase hiện tại**: Phase 2 (Spark Streaming)
-- **Hoàn thành**: 2/9 Phases
+- **Phase hiện tại**: Chuẩn bị sang Phase 7 (Grafana Dashboard)
+- **Hoàn thành**: 4/8 Phases (Phase 0, 1, 2, 5)
 
 ---
 
 ## Breakdown theo Phase
 
-### Phase 0: Foundation & First Blood 🩸 [HOÀN THÀNH 🎉]
-- [x] [QUICK-DEMO] Python script lấy giá BTC real-time
-- [x] [BUILD] Tạo project structure
-- [x] [BUILD] Setup Docker Compose base
-- [x] [BUILD] Git init + .gitignore + .dockerignore
-- [x] [BUILD] Python venv + requirements.txt
-- [x] [BUILD] Crypto producer script hoàn chỉnh
-- [x] [BUILD] Stock producer script hoàn chỉnh
-- [x] [DOC] Khởi tạo hệ thống tracking 
+### Phase 0: Foundation & Setup 🩸 [HOÀN THÀNH 🎉]
+- [x] Tạo cấu trúc thư mục dự án (project structure)
+- [x] Setup Docker Compose base
+- [x] Cài đặt môi trường Python venv + requirements.txt
 
-### Phase 1: Kafka 📨 [HOÀN THÀNH 🎉]
-- [x] [BUILD] Cấu hình producer gửi dữ liệu vào Kafka thay vì in ra màn hình
-- [x] [BUILD] Tạo file schema định nghĩa cấu trúc dữ liệu gửi vào Kafka
-- [x] [TEST] Xác nhận dữ liệu vào Kafka thành công qua Kafka-UI
+### Phase 1: Kafka Ingestion 📨 [HOÀN THÀNH 🎉]
+- [x] Xây dựng Python Async Producer (`yahoo_batch_producer.py`)
+- [x] Đẩy dữ liệu thô (Raw JSON) vào Kafka topic `raw_daily_prices`
+- [x] Xác nhận dữ liệu nạp thành công vào Kafka
 
-### Phase 2: Spark Structured Streaming ⚡ [Đang làm]
-- [x] [QUICK-DEMO] Cài PySpark, đọc CSV, tính SMA-5 & SMA-10 thành công
-- [x] [BUILD] Thêm Spark vào Docker Compose (profile: processing)
-- [x] [BUILD] Kết nối Spark đọc stream từ Kafka topic crypto_trades & stock_trades
-- [x] [BUILD] Tính SMA, EMA, VWAP real-time trên dữ liệu streaming
-- [x] [TEST] Xác nhận kết quả tính toán chính xác qua console output
+### Phase 2: Spark Processing ⚡ [HOÀN THÀNH 🎉]
+- [x] Xây dựng Spark Batch Processor (`spark_batch_processor.py`)
+- [x] Spark đọc stream từ Kafka, parse JSON động
+- [x] Tính toán Daily Return và Price Range
+- [x] Sử dụng Java JDBC Driver nạp dữ liệu vào TimescaleDB
+- [x] Giải quyết triệt để lỗi phân quyền Ivy2, Duplicate Key (bằng cơ chế Delete-then-Insert), và Driver Classloader
 
-### Phase 3: Storage (TimescaleDB) 🗄️ [HOÀN THÀNH 🎉]
-- [x] [BUILD] Tạo schema database trên TimescaleDB
-- [x] [BUILD] Kết nối Spark → TimescaleDB
-- [x] [BUILD] Ghi kết quả tính toán vào DB (table: crypto_indicators)
-- [x] [TEST] Xác nhận dữ liệu ghi vào DB thành công
+### Phase 5: Airflow Orchestration 🎼 [HOÀN THÀNH 🎉]
+- [x] Tích hợp Airflow DAG `daily_batch_decoupled`
+- [x] Lập lịch điều phối: Trigger script Ingestion (Task 1) -> Spark Submit Job (Task 2)
+- [x] Tối ưu hóa thời gian chạy: giảm từ ~50s xuống ~36s (JVM overhead cố định) nhờ mount offline JARs
 
-### Phase 4: Trực quan hóa dữ liệu (Grafana) 📊 [Tiếp theo]
-- [x] [BUILD] Thêm Grafana vào Docker Compose
-- [x] [BUILD] Cấu hình Datasource tự động kết nối PostgreSQL
-- [x] [BUILD] Xây dựng Dashboard theo chuẩn Hierarchy of Information
-- [ ] [TEST] Xác nhận hiển thị dữ liệu real-time
+### Phase 7: Grafana Dashboard 📊 [HOÀN THÀNH 🎉]
+- [x] Kết nối Grafana với TimescaleDB
+- [x] Xây dựng Dashboard hiển thị giá, volume, và biến động (đã chuyển query sang daily_prices)
+- [x] Xác nhận hiển thị dữ liệu thô và biểu đồ trực quan (AAPL, MSFT, BTC-USD, ETH-USD) từ DB thành công
+
+
+### Phase 3: Lakehouse Storage (Iceberg + MinIO) ⏳ [Chưa làm]
+- [ ] Setup MinIO object storage và Apache Iceberg
+- [ ] Thiết kế Star Schema cho dữ liệu trading
+- [ ] Viết Spark job chuyển dữ liệu sang Iceberg format
+
+### Phase 4: Trino SQL Analytics ⏳ [Chưa làm]
+- [ ] Thiết lập Trino SQL engine
+- [ ] Viết analytical queries (Window functions, CTEs)
+- [ ] Tạo views phục vụ báo cáo phân tích
+
+### Phase 6: Machine Learning Pipeline ⏳ [Chưa làm]
+- [ ] Feature Engineering (SMA, EMA, RSI, VWAP...) từ dữ liệu giá
+- [ ] Train models XGBoost (Phân loại) & LightGBM (Hồi quy)
+- [ ] Thiết lập MLflow track experiment và tích hợp dự đoán vào Airflow DAG
+
