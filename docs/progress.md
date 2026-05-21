@@ -43,13 +43,15 @@
 *   [ ] **Nâng cấp Enterprise (Chưa làm)**: Xử lý dữ liệu đến trễ hoặc dữ liệu bị xáo trộn thứ tự (Late & Out-of-order Data) sử dụng cơ chế Watermarking hoặc Deduplication nâng cao của Spark.
 
 ### Phase 3: Lakehouse Storage (MinIO + Apache Iceberg) ⏳ [ĐANG THỰC HIỆN]
-*   [ ] Bật service Object Storage **MinIO** trên Docker.
-*   [ ] Thiết lập **Apache Iceberg Catalog** (JDBC/REST catalog sử dụng Postgres làm backend).
+*   [x] Cấu hình và chuẩn bị khởi động Object Storage **MinIO** và **mc (MinIO Client)** trên Docker.
+
+*   [ ] Thiết lập **Apache Iceberg Catalog** (Đã viết script `test_spark_iceberg.py` để chạy thử nghiệm JDBC Catalog Postgres + MinIO).
 *   [ ] Thiết kế mô hình dữ liệu **Star Schema** chuẩn cho dữ liệu trading (Thay thế bảng phẳng hiện tại):
     *   `dim_assets` (Dimension bảng tài sản).
     *   `dim_date` (Dimension thời gian).
     *   `fact_daily_prices` (Fact bảng giá).
-*   [ ] **Khởi tạo Dim Date tĩnh**: Viết script SQL/Python pre-populate dữ liệu bảng `dim_date` từ năm 2000 đến 2050 để tối ưu hóa truy vấn JOIN và đồng nhất báo cáo.
+*   [x] **Khởi tạo Dim Date tĩnh**: Viết script SQL/Python pre-populate dữ liệu bảng `dim_date` từ năm 2000 đến 2050 để tối ưu hóa truy vấn JOIN và đồng nhất báo cáo.
+
 *   [ ] Cấu hình PySpark ghi dữ liệu thô vào tầng **Bronze** (MinIO JSON/Parquet).
 *   [ ] Viết Spark Job biến đổi dữ liệu từ Bronze sang **Silver** (lọc trùng, validate chất lượng dữ liệu, áp dụng Window Functions tính toán chỉ báo kỹ thuật, mô hình hóa Star Schema) và ghi đè vào Iceberg tables.
 *   [ ] Thiết lập quy trình đồng bộ dữ liệu gia tăng (Incremental Sync) từ tầng Gold/Silver lên Serving DB (Postgres/TimescaleDB) một cách an toàn và gọn nhẹ.
