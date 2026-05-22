@@ -110,6 +110,8 @@ services:
     volumes:
       # Mount thư mục src vào Spark container (nơi có Java + Spark đầy đủ)
       - ./src:/opt/airflow/src
+      # Mount thư mục config để truy cập file symbols.json
+      - ./config:/opt/airflow/config
       # Mount JARs đã download sẵn, không cần tải lại mỗi lần chạy
       - ./infrastructure/spark/jars:/opt/spark/user-jars
     networks:

@@ -45,8 +45,8 @@
 ### Phase 3: Lakehouse Storage (MinIO + Apache Iceberg) ⏳ [ĐANG THỰC HIỆN]
 *   [x] Cấu hình và chuẩn bị khởi động Object Storage **MinIO** và **mc (MinIO Client)** trên Docker.
 
-*   [ ] Thiết lập **Apache Iceberg Catalog** (Đã viết script `test_spark_iceberg.py` để chạy thử nghiệm JDBC Catalog Postgres + MinIO).
-*   [ ] Thiết kế mô hình dữ liệu **Star Schema** chuẩn cho dữ liệu trading (Thay thế bảng phẳng hiện tại):
+*   [x] Thiết lập **Apache Iceberg Catalog** (Đã viết script `test_spark_iceberg.py` để chạy thử nghiệm JDBC Catalog Postgres + MinIO).
+*   [x] Thiết kế mô hình dữ liệu **Star Schema** chuẩn cho dữ liệu trading (Thay thế bảng phẳng hiện tại):
     *   `dim_assets` (Dimension bảng tài sản).
     *   `dim_date` (Dimension thời gian).
     *   `fact_daily_prices` (Fact bảng giá).
