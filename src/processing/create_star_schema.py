@@ -32,6 +32,7 @@ MINIO_USER = os.environ.get("MINIO_ROOT_USER", "admin")
 MINIO_PASS = os.environ.get("MINIO_ROOT_PASSWORD", "minioadminpassword")
 MINIO_BUCKET = os.environ.get("MINIO_LAKEHOUSE_BUCKET", "lakehouse")
 MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
+SPARK_MASTER = os.environ.get("SPARK_MASTER", "spark://spark-master:7077")
 SPARK_PACKAGES = os.environ.get(
     "SPARK_PACKAGES",
     "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,org.postgresql:postgresql:42.6.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262"
@@ -41,8 +42,10 @@ def main():
     spark = (
         SparkSession.builder
         .appName("CreateStarSchema")
-        .master("local[*]")
+        .master(SPARK_MASTER)
         .config("spark.jars.packages", SPARK_PACKAGES)
+        # Tối ưu hiệu năng shuffle cho dữ liệu nhỏ
+        .config("spark.sql.shuffle.partitions", "4")
         #config catalog
         .config("spark.sql.extensions", 
                 "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")

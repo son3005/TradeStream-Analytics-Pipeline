@@ -57,6 +57,8 @@ def main():
         .appName("SilverToPostgresSync")
         .master(SPARK_MASTER)
         .config("spark.jars.packages", SPARK_PACKAGES)
+        # Tối ưu hiệu năng shuffle cho dữ liệu nhỏ
+        .config("spark.sql.shuffle.partitions", "4")
         # Thiết lập các cấu hình cần thiết để kết nối và tương tác với các bảng Apache Iceberg
         .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
         .config("spark.sql.catalog.lakehouse", "org.apache.iceberg.spark.SparkCatalog")

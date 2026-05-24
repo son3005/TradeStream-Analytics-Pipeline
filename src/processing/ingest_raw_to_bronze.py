@@ -27,6 +27,8 @@ def main():
         .master(SPARK_MASTER)
         # Khai báo các gói JAR cần thiết cho Kafka và Hadoop AWS S3
         .config("spark.jars.packages", SPARK_PACKAGES)
+        # Tối ưu hiệu năng shuffle cho dữ liệu nhỏ
+        .config("spark.sql.shuffle.partitions", "4")
         # Cấu hình kết nối MinIO
         .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT)
         .config("spark.hadoop.fs.s3a.access.key", MINIO_USER)
@@ -47,6 +49,7 @@ def main():
             .option("kafka.bootstrap.servers", KAFKA_BROKER)
             .option("subscribe", KAFKA_TOPIC)
             .option("startingOffsets", "earliest")
+            .option("failOnDataLoss", "false")            # Không dừng pipeline nếu gặp offset lỗi/bị xóa
             .load()
         )
 

@@ -36,57 +36,78 @@ def delivery_report(err, msg):
 
 async def fetch_symbol(session, symbol_info, producer):
     """
-    Gọi API Yahoo và đẩy thẳng dữ liệu thô (RAW JSON) vào Kafka.
+    Gọi API Yahoo và đẩy thẳng dữ liệu thô (RAW JSON) vào Kafka với cơ chế retry và exponential backoff.
     """
     symbol = symbol_info["symbol"]
     url = f"{YAHOO_API_URL}/{symbol}?range=1d&interval=1d"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     
-    try:
-        # Giới hạn timeout để không bị kẹt khi API lỗi
-        async with session.get(url, headers=headers, timeout=10) as response:
-            if response.status == 200:
-                raw_text = await response.text()
-                data = json.loads(raw_text)
-                
-                # Trích xuất phần chart result
-                if "chart" in data and "result" in data["chart"] and data["chart"]["result"]:
-                    result = data["chart"]["result"][0]
+    retries = 3
+    backoff = 1.0  # Bắt đầu với 1 giây
+    
+    for attempt in range(retries):
+        try:
+            # Giới hạn timeout để không bị kẹt khi API lỗi
+            async with session.get(url, headers=headers, timeout=10) as response:
+                if response.status == 200:
+                    raw_text = await response.text()
+                    data = json.loads(raw_text)
                     
-                    # Gói thêm thông tin metadata (để Spark dễ xử lý sau này)
-                    payload = {
-                        "metadata": {
-                            "symbol": symbol,
-                            "name": symbol_info.get("name", ""),
-                            "asset_type": symbol_info.get("type", ""),
-                            "fetch_timestamp": datetime.now().isoformat()
-                        },
-                        "raw_data": result
-                    }
-                    
-                    # Nén thành JSON string và đẩy vào Kafka
-                    # Dùng symbol làm key để các record của cùng 1 symbol luôn vào cùng 1 partition
-                    producer.produce(
-                        topic=KAFKA_TOPIC,
-                        key=symbol.encode('utf-8'),
-                        value=json.dumps(payload).encode('utf-8'),
-                        callback=delivery_report
-                    )
+                    # Trích xuất phần chart result
+                    if "chart" in data and "result" in data["chart"] and data["chart"]["result"]:
+                        result = data["chart"]["result"][0]
+                        
+                        # Gói thêm thông tin metadata (để Spark dễ xử lý sau này)
+                        payload = {
+                            "metadata": {
+                                "symbol": symbol,
+                                "name": symbol_info.get("name", ""),
+                                "asset_type": symbol_info.get("type", ""),
+                                "fetch_timestamp": datetime.now().isoformat()
+                            },
+                            "raw_data": result
+                        }
+                        
+                        # Nén thành JSON string và đẩy vào Kafka
+                        # Dùng symbol làm key để các record của cùng 1 symbol luôn vào cùng 1 partition
+                        producer.produce(
+                            topic=KAFKA_TOPIC,
+                            key=symbol.encode('utf-8'),
+                            value=json.dumps(payload).encode('utf-8'),
+                            callback=delivery_report
+                        )
+                        break
+                    else:
+                        print(f"⚠️ {symbol}: Dữ liệu trống hoặc sai định dạng JSON từ Yahoo")
+                        break
+                elif response.status == 429: # Rate limited
+                    wait_time = backoff * (2 ** attempt)
+                    print(f"⚠️ {symbol}: Bị giới hạn tần suất (429). Thử lại sau {wait_time}s... (Lần {attempt + 1}/{retries})")
+                    await asyncio.sleep(wait_time)
                 else:
-                    print(f"⚠️ {symbol}: Dữ liệu trống hoặc sai định dạng JSON từ Yahoo")
+                    print(f"❌ {symbol}: Lỗi HTTP {response.status} (Lần {attempt + 1}/{retries})")
+                    if attempt < retries - 1:
+                        await asyncio.sleep(backoff * (2 ** attempt))
+                    else:
+                        break
+        except Exception as e:
+            print(f"❌ {symbol}: Lỗi kết nối - {str(e)} (Lần {attempt + 1}/{retries})")
+            if attempt < retries - 1:
+                await asyncio.sleep(backoff * (2 ** attempt))
             else:
-                print(f"❌ {symbol}: Lỗi HTTP {response.status}")
-                
-    except Exception as e:
-        print(f"❌ {symbol}: Không thể kết nối - {str(e)}")
+                break
 
 async def main(symbols_file_path):
-    # Khởi tạo Kafka Producer
-    # Chỉnh 'linger.ms' và 'batch.size' để tối ưu hóa khi đẩy hàng chục ngàn message
+    # Khởi tạo Kafka Producer với cấu hình tối ưu hóa khả năng chống lỗi và nén dữ liệu
     producer_conf = {
         'bootstrap.servers': KAFKA_BROKER,
-        'linger.ms': 50, # Đợi 50ms để gom nhiều tin nhắn gửi đi cùng lúc
-        'batch.num.messages': 1000
+        'acks': 'all',                  # Bảo toàn dữ liệu: Đảm bảo toàn bộ replicas xác nhận đã nhận tin nhắn
+        'linger.ms': 5,                 # Gom tin nhắn gửi đi trong vòng 5ms (giảm tải I/O mạng)
+        'batch.size': 16384,            # Lô tin nhắn tối đa 16KB trước khi gửi
+        'compression.type': 'snappy',   # Nén dữ liệu snappy hiệu năng cao để giảm tải I/O mạng
+        'retries': 5,                   # Tự động gửi lại tối đa 5 lần nếu gặp lỗi kết nối tạm thời của Kafka
+        'retry.backoff.ms': 1000,       # Thời gian chờ giữa các lần retry tự động của Kafka
+        'client.id': 'yahoo-batch-producer'
     }
     producer = Producer(producer_conf)
     

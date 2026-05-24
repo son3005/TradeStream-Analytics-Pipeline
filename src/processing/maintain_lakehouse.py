@@ -54,6 +54,8 @@ def main():
         .appName("LakehouseMaintenance")
         .master(SPARK_MASTER)
         .config("spark.jars.packages", SPARK_PACKAGES)
+        # Tối ưu hiệu năng shuffle cho dữ liệu nhỏ
+        .config("spark.sql.shuffle.partitions", "4")
         # Các cấu hình cho Apache Iceberg
         .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
         .config("spark.sql.catalog.lakehouse", "org.apache.iceberg.spark.SparkCatalog")
