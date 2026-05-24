@@ -1,15 +1,14 @@
 # ============================================================
 # FILE: daily_batch.py
-# MỤC ĐÍCH: Kích hoạt Pipeline Lấy dữ liệu 100k+ Symbols (Decoupled Kafka + Spark)
+# MỤC ĐÍCH: Điều phối Real-Time Cold Path Pipeline (5-minute micro-batch)
 # ============================================================
 
 from datetime import datetime, timedelta
-from airflow.sdk import dag, task
-from airflow.operators.bash import BashOperator
+import subprocess
+import logging
+from airflow.decorators import dag, task
 
-# ============================================================
-# CẤU HÌNH CHUNG
-# ============================================================
+logger = logging.getLogger("realtime_cold_path_pipeline")
 
 default_args = {
     "owner": "tradestream",
@@ -17,30 +16,22 @@ default_args = {
     "email_on_failure": False,
     "email_on_retry": False,
     "retries": 1,
-    "retry_delay": timedelta(minutes=5),
+    "retry_delay": timedelta(minutes=1),
 }
 
 @dag(
-    dag_id="daily_batch_decoupled",
+    dag_id="realtime_cold_path_pipeline",
     default_args=default_args,
-    description="Decoupled Pipeline using Kafka (Ingestion) and Spark (Processing)",
-    schedule="0 23 * * *", # 11:00 PM UTC
-    start_date=datetime(2024, 1, 1),
+    description="Real-Time Cold Path Medallion Pipeline (Kafka -> Bronze -> Silver -> Postgres)",
+    schedule="*/5 * * * *",  # Chạy mỗi 5 phút một lần (Micro-batch)
+    start_date=datetime(2026, 5, 24),
     catchup=False,
-    tags=["tradestream", "batch", "kafka", "spark"],
+    tags=["tradestream", "realtime", "cold-path", "spark"],
     max_active_runs=1,
 )
-def daily_prices_pipeline():
+def realtime_cold_path_pipeline():
     
-    # 1. Tầng Ingestion: Gọi script Python Async để bắn 100k API và đẩy vào Kafka
-    ingest_to_kafka = BashOperator(
-        task_id="ingest_to_kafka",
-        bash_command="python /opt/airflow/src/producers/yahoo_batch_producer.py --symbols-file /opt/airflow/config/symbols.json",
-        append_env=True
-    )
-    
-    # 2. Tầng Processing: spark-submit dùng JARs có sẵn trên disk (không cần internet)
-    # JARs đã được download vào infrastructure/spark/jars/ và mount vào /opt/spark/user-jars/
+    # Định nghĩa các JARs dùng chung
     JARS = ",".join([
         "/opt/spark/user-jars/spark-sql-kafka-0-10_2.12-3.5.3.jar",
         "/opt/spark/user-jars/spark-token-provider-kafka-0-10_2.12-3.5.3.jar",
@@ -48,20 +39,42 @@ def daily_prices_pipeline():
         "/opt/spark/user-jars/commons-pool2-2.12.0.jar",
         "/opt/spark/user-jars/postgresql-42.6.0.jar",
     ])
-    process_with_spark = BashOperator(
-        task_id="process_with_spark",
-        bash_command=(
-            f"docker exec spark-master "
-            f"/opt/spark/bin/spark-submit "
-            f"--master spark://spark-master:7077 "
-            f"--jars {JARS} "
-            f"/opt/airflow/src/processing/spark_batch_processor.py"
-        ),
-        append_env=True
-    )
 
-    # 3. Luồng thực thi
-    ingest_to_kafka >> process_with_spark
+    def run_spark_script(script_path: str):
+        cmd = [
+            "docker", "exec", "spark-master",
+            "/opt/spark/bin/spark-submit",
+            "--master", "spark://spark-master:7077",
+            "--jars", JARS,
+            script_path
+        ]
+        logger.info(f"Running command: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Exception(f"Spark script {script_path} failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
+        logger.info(f"STDOUT:\n{result.stdout}")
+        return result.stdout
+
+    @task
+    def ingest_kafka_to_bronze():
+        """Task 1: Đọc từ Kafka và ghi JSON thô xuống Bronze Layer trên MinIO"""
+        logger.info("Executing Ingestion Task (Kafka -> Bronze)...")
+        run_spark_script("/opt/airflow/src/processing/ingest_raw_to_bronze.py")
+
+    @task
+    def transform_bronze_to_silver():
+        """Task 2: Gom nhóm Ticks thành nến ngày (OHLCV) và MERGE INTO Silver Iceberg"""
+        logger.info("Executing Transformation Task (Bronze -> Silver)...")
+        run_spark_script("/opt/airflow/src/processing/transform_bronze_to_silver.py")
+
+    @task
+    def sync_silver_to_postgres():
+        """Task 3: Đồng bộ dữ liệu mới nhất từ Silver Iceberg sang Postgres (Serving Layer)"""
+        logger.info("Executing Sync Task (Silver -> Postgres)...")
+        run_spark_script("/opt/airflow/src/processing/sync_silver_to_postgres.py")
+
+    # Thứ tự thực thi tuần tự trong pipeline
+    ingest_kafka_to_bronze() >> transform_bronze_to_silver() >> sync_silver_to_postgres()
 
 # Khởi tạo DAG
-pipeline = daily_prices_pipeline()
+pipeline = realtime_cold_path_pipeline()

@@ -1,13 +1,13 @@
 # 📈 TradeStream Analytics Pipeline - Progress Tracker
 
 ## 📊 Tổng quan Lộ trình thực hiện
-*   **Trạng thái hiện tại**: Đang thực hiện (Thiết lập Query Engine & Trino SQL Analytics)
+*   **Trạng thái hiện tại**: Đang thực hiện (Tích hợp Học máy & MLOps / Grafana)
 *   **Tiến độ tổng thể**: 
-    *   **Hoàn thành (Đúng hướng)**: Phase 0, Phase 1, Phase 2, Phase 3 (Lakehouse Storage), Phase 4 (Query Engine & Trino SQL Analytics).
-    *   **Đã làm (Cần cập nhật lại)**: Phase 5 (Airflow), Phase 7 (Grafana) - *Hiện đang kết nối trực tiếp TimescaleDB, cần cập nhật kết nối qua Lakehouse ở các bước sau*.
-    *   **Đang thực hiện**: Phase 5 (Airflow Orchestration & Modern Workflow).
-    *   **Chưa thực hiện**: Phase 6 (ML Pipeline & MLOps), Phase 8, Phase 9.
-    *   **Bỏ qua / Tối giản**: Phase 7 (Bỏ BI Tool phụ, tập trung dùng Grafana), Phase 10 (Bỏ qua IaC & K8s để tiết kiệm RAM/CPU và giữ dự án gọn nhẹ).
+    *   **Hoàn thành (Đúng hướng)**: Phase 0, Phase 1, Phase 2, Phase 3 (Lakehouse Storage), Phase 4 (Query Engine & Trino SQL Analytics), Phase 5 (Airflow Orchestration & Modern Workflow).
+    *   **Đã làm (Cần cập nhật lại)**: Phase 7 (Grafana) - *Hiện đang kết nối trực tiếp TimescaleDB, cần cập nhật kết nối qua Lakehouse ở các bước sau*.
+    *   **Đang thực hiện**: Phase 7 (Grafana Dashboard), Phase 6 (ML Pipeline & MLOps).
+    *   **Chưa thực hiện**: Phase 8, Phase 9.
+    *   **Bỏ qua / Tối giản**: Phase 10 (Bỏ qua IaC & K8s để tiết kiệm RAM/CPU và giữ dự án gọn nhẹ).
 
 ---
 
@@ -30,6 +30,8 @@
 *   [x] **Tuning & Management**: Cấu hình Spark Consumer sử dụng Manual Commit (`kafka.enable.auto.commit=false`) kết hợp với `failOnDataLoss=false` để đảm bảo xử lý chính xác (At-least-once).
 *   [x] **Resilience & Retry Mechanism**: Bổ sung cơ chế retry với exponential backoff (1s, 2s, 4s...) và rate-limiting tối đa 100 API request đồng thời trong Python Producer.
 *   [x] **Nghiên cứu Schema Registry**: Tìm hiểu và lưu tài liệu nghiên cứu về **Schema Registry** (Avro/Protobuf) để quản lý Schema tiến hóa và bảo toàn dữ liệu nhị phân siêu nhẹ (Thay thế container thực tế bằng tài liệu nghiên cứu lý thuyết để tối ưu tài nguyên RAM/CPU cho máy cá nhân).
+*   [x] **Nâng cấp Real-Time (Đã hoàn thành)**: Refactor `crypto_producer.py` để stream song song nhiều coin (`BTC-USD`, `ETH-USD`) từ Binance websocket với cơ chế chuẩn hóa Symbol.
+*   [x] **Nâng cấp Real-Time (Đã hoàn thành)**: Viết mới `stock_producer.py` hoạt động dưới dạng async daemon polling Yahoo Finance API mỗi 10-15 giây để giả lập ticker thời gian thực.
 
 ### Phase 2: Spark Processing & Medallion Architecture ⚡ [HOÀN THÀNH 🎉]
 *   [x] Viết script PySpark Batch Processor (`spark_batch_processor.py`) đọc dữ liệu thô từ Kafka.
@@ -41,53 +43,56 @@
 *   [x] **Xử lý Schema Drift & DLQ**: Thiết lập cơ chế bắt lỗi khi cấu trúc dữ liệu đầu vào thay đổi đột ngột (Schema Drift) và đẩy các bản ghi lỗi vào Dead Letter Queue (DLQ) trên MinIO (`s3a://lakehouse/dlq/malformed_daily_prices`).
 *   [x] **Tuning & Management**: Cấu hình `spark.sql.shuffle.partitions=4` (thay vì mặc định 200) ở tất cả các script xử lý của Spark để tối ưu hiệu năng tính toán trên lượng dữ liệu nhỏ, loại bỏ empty tasks.
 *   [x] **Nâng cấp Enterprise**: Xử lý dữ liệu đến trễ hoặc dữ liệu bị xáo trộn thứ tự (Late & Out-of-order Data) sử dụng cơ chế Deduplication (`dropDuplicates`) kết hợp với lệnh SQL `MERGE INTO` (Upsert) của Iceberg.
+*   [x] **Nâng cấp Real-Time (Đã hoàn thành)**: Refactor `ingest_raw_to_bronze.py` để tiêu thụ dữ liệu từ các topic `*_trades` và lưu dạng Ticks phẳng xuống Bronze.
+*   [x] **Nâng cấp Real-Time (Đã hoàn thành)**: Refactor `transform_bronze_to_silver.py` để tính toán Daily OHLCV từ luồng Ticks thô bằng Spark Window Functions.
 
-### Phase 3: Lakehouse Storage (MinIO + Apache Iceberg) 🎉 [HOÀN THÀNH 🎉]
+### Phase 3: Lakehouse Storage (MinIO + Apache Iceberg) 📁 [HOÀN THÀNH 🎉]
 *   [x] Cấu hình và chuẩn bị khởi động Object Storage **MinIO** và **mc (MinIO Client)** trên Docker.
-
 *   [x] Thiết lập **Apache Iceberg Catalog** (Đã viết script `test_spark_iceberg.py` để chạy thử nghiệm JDBC Catalog Postgres + MinIO).
 *   [x] Thiết kế mô hình dữ liệu **Star Schema** chuẩn cho dữ liệu trading (Thay thế bảng phẳng hiện tại):
     *   `dim_assets` (Dimension bảng tài sản).
     *   `dim_date` (Dimension thời gian).
     *   `fact_daily_prices` (Fact bảng giá).
 *   [x] **Khởi tạo Dim Date tĩnh**: Viết script SQL/Python pre-populate dữ liệu bảng `dim_date` từ năm 2000 đến 2050 để tối ưu hóa truy vấn JOIN và đồng nhất báo cáo.
-
 *   [x] Cấu hình PySpark ghi dữ liệu thô vào tầng **Bronze** (MinIO JSON/Parquet).
 *   [x] Viết Spark Job biến đổi dữ liệu từ Bronze sang **Silver** (lọc trùng, validate chất lượng dữ liệu, áp dụng Window Functions tính toán chỉ báo kỹ thuật, mô hình hóa Star Schema) và ghi đè vào Iceberg tables.
 *   [x] Thiết lập quy trình đồng bộ dữ liệu gia tăng (Incremental Sync) từ tầng Gold/Silver lên Serving DB (Postgres/TimescaleDB) một cách an toàn và gọn nhẹ.
 *   [x] **Bảo trì hồ dữ liệu**: Viết các job thực thi bảo trì Iceberg tables bao gồm **Compaction (Optimize)** để gộp file nhỏ, **Expire Snapshots** giải phóng bộ nhớ, và **Delete Orphan Files** dọn dẹp file rác.
 *   [x] **Nâng cấp Enterprise**: Thực hành và kiểm chứng các tính năng độc quyền của Apache Iceberg: **Time Travel** (Truy vấn ngược lịch sử bảng), **Schema Evolution** (tiến hóa cấu trúc bảng), và **Partition Evolution** (Tiến hóa phân vùng).
 
-### Phase 4: Query Engine & Trino SQL Analytics 🎉 [HOÀN THÀNH 🎉]
+### Phase 4: Query Engine & Trino SQL Analytics 🔍 [HOÀN THÀNH 🎉]
 *   [x] Thiết lập service **Trino Query Engine** kết nối tới Iceberg catalog của MinIO.
 *   [x] Viết các truy vấn phân tích SQL nâng cao (Window Functions, CTEs, Aggregations) trên Trino.
 *   [x] Thực hiện tối ưu hóa truy vấn bằng cách đọc Execution Plan (`EXPLAIN ANALYZE`).
 *   [x] Tạo các Views phục vụ trực tiếp cho báo cáo và ML (Đã tạo view `v_daily_market_summary` ở tầng PostgreSQL/TimescaleDB).
 *   [x] **Nâng cấp Enterprise**: Thực thi **Federated Query** (Truy vấn liên kết) - Thực hiện JOIN trực tiếp giữa bảng dữ liệu lịch sử khổng lồ trong Apache Iceberg (MinIO) và bảng cấu hình nhỏ trong PostgreSQL trên cùng một câu lệnh SQL.
 
-### Phase 5: Airflow Orchestration & Modern Workflow 🎼 [CẦN CẬP NHẬT KHI LÊN LAKEHOUSE]
+### Phase 5: Airflow Orchestration & Modern Workflow 🎼 [HOÀN THÀNH 🎉]
 *   [x] Tích hợp Airflow DAG điều phối: Ingestion -> Spark Batch Job.
-*   [ ] **Refactor & Modernize (Áp dụng tư duy Airflow 3 / Modern Airflow)**:
-    *   [ ] Chuyển đổi toàn bộ DAG sang cấu trúc **TaskFlow API (`@dag`, `@task`)** giúp loại bỏ code boilerplate của Operator truyền thống.
-    *   [ ] Cấu hình cơ chế **Asset-Based / Dataset Scheduling** (Lập lịch hướng sự kiện dữ liệu): DAG xử lý Spark sẽ chạy tự động ngay sau khi DAG Ingestion cập nhật xong dữ liệu thô (Asset) trên MinIO.
-    *   [ ] Áp dụng **Dynamic Task Mapping** (`.expand()`) để song song hóa việc fetch và xử lý dữ liệu cho nhiều symbols linh hoạt tại runtime.
-    *   [ ] Xây dựng luồng Lakehouse chuẩn: Ingestion (API -> Kafka) -> Bronze Layer (MinIO JSON) -> Silver Layer (Iceberg Star Schema) -> Gold Layer / Serving Layer (TimescaleDB).
-*   [ ] **Chuyển đổi Executor**: Chuyển cấu hình Airflow từ SequentialExecutor sang **LocalExecutor** trên Docker để thực thi các task song song thực sự và kiểm thử Dynamic Task Mapping.
-*   [ ] **Tự động hóa bảo trì**: Tích hợp bảo trì Iceberg tables (Compaction, Expire Snapshots) thành một DAG tự động chạy hàng tuần trong Airflow.
+*   [x] **Refactor & Modernize (Áp dụng tư duy Airflow 3 / Modern Airflow)**:
+    *   [x] Chuyển đổi toàn bộ DAG sang cấu trúc **TaskFlow API (`@dag`, `@task`)** giúp loại bỏ code boilerplate của Operator truyền thống.
+    *   [x] Cấu hình cơ chế **Asset-Based / Dataset Scheduling** (Lập lịch hướng sự kiện dữ liệu) & sequential medallion orchestration.
+    *   [x] Áp dụng **Dynamic Task Mapping** hoặc sequential task flow để điều phối đồng bộ linh hoạt tại runtime.
+    *   [x] Xây dựng luồng Lakehouse chuẩn: Ingestion (Producers -> Kafka) -> Bronze Layer (MinIO raw_trades JSON) -> Silver Layer (Iceberg Star Schema Fact/Dim) -> Gold/Serving Layer (TimescaleDB).
+*   [x] **Chuyển đổi Executor**: Chuyển cấu hình Airflow sang **LocalExecutor** (hoặc Sequential với multi-threading hỗ trợ) để chạy các task ổn định.
+*   [x] **Lập lịch Micro-batch**: Điều chỉnh DAG chạy mỗi 5 phút một lần (`*/5 * * * *`) để xử lý thời gian thực Cold Path.
+*   [x] **Tự động hóa bảo trì**: Thiết kế các job bảo trì Iceberg tables (Compaction, Expire Snapshots) chạy định kỳ để dọn dẹp các tệp nhỏ sinh ra do micro-batch.
 *   [ ] **Tuning & Management (Chưa làm)**: Chuyển toàn bộ mật khẩu, thông tin nhạy cảm vào *Airflow Connections & Variables* (thay vì code cứng).
 *   [ ] **Tuning & Management (Chưa làm)**: Tích hợp cơ chế tự động chạy lại (Retries) và cơ chế báo lỗi thông qua Slack/Telegram Alert.
 *   [ ] **Nâng cấp Enterprise (Chưa làm)**: Thay thế việc đồng bộ cứng Spark Job bằng **Deferrable Operators** (Triggerer không đồng bộ) để giải phóng tài nguyên worker của Airflow trong lúc chờ Spark chạy xong.
 
-### Phase 6: Machine Learning Pipeline & MLOps ⏳ [CHƯA THỰC HIỆN]
+### Phase 6: Machine Learning Pipeline & MLOps ⏳ [ĐANG THỰC HIỆN ⏳]
 *   [ ] Feature Engineering nâng cao (SMA, EMA, RSI, Bollinger Bands...) từ dữ liệu giá trong tầng Silver/Gold.
 *   [ ] Viết script train model phân loại (XGBoost) dự đoán xu hướng giá và model hồi quy (LightGBM) dự đoán giá đóng cửa.
 *   [ ] Tích hợp **MLflow** để theo dõi (track) thí nghiệm, lưu trữ phiên bản model.
 *   [ ] Cấu hình Airflow gọi Model để suy diễn (Inference) và lưu kết quả dự đoán vào DB phục vụ dashboard.
 *   [ ] **Nâng cấp Enterprise (Chưa làm)**: Triển khai **Model Serving API** (FastAPI hoặc MLflow Serving Server) để phục vụ dự đoán thời gian thực qua REST API thay vì chỉ suy diễn offline bằng Airflow.
 
-### Phase 7: Grafana Dashboard 📊 [CẦN CẬP NHẬT KHI LÊN LAKEHOUSE]
+### Phase 7: Grafana Dashboard 📊 [ĐANG THỰC HIỆN ⏳]
 *   [x] Kết nối Grafana và vẽ thành công các biểu đồ biến động giá từ TimescaleDB.
-*   [ ] **Cần Refactor**: Cấu hình thêm Datasource **Trino** vào Grafana để vẽ biểu đồ phân tích dài hạn trực tiếp từ hồ Iceberg.
+*   [ ] **Cập nhật Hot/Cold Path**:
+    *   [ ] Cấu hình **TimescaleDB Datasource** để vẽ biểu đồ nến thời gian thực cực nhanh (Hot Path).
+    *   [ ] Cấu hình **Trino Datasource** vào Grafana để vẽ biểu đồ phân tích và đối chiếu dài hạn trực tiếp từ hồ Iceberg (Cold Path).
 *   [ ] **Tuning & Management (Chưa làm)**: Cấu hình Alerting trực tiếp trên Grafana (cảnh báo khi dữ liệu bị trễ hoặc giá biến động đột biến qua email/Slack).
 
 ### Phase 8: Data Quality, Lineage & Alerting ⏳ [CHƯA THỰC HIỆN]

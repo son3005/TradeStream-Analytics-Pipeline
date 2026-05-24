@@ -12,7 +12,8 @@ MINIO_PASS = os.environ.get("MINIO_ROOT_PASSWORD", "minioadminpassword")
 MINIO_BUCKET = os.environ.get("MINIO_LAKEHOUSE_BUCKET", "lakehouse")
 MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
 KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "kafka:29092")
-KAFKA_TOPIC = "raw_daily_prices"
+# Subscribe cùng lúc cả stock_trades và crypto_trades
+KAFKA_TOPICS = "stock_trades,crypto_trades"
 SPARK_MASTER = os.environ.get("SPARK_MASTER", "spark://spark-master:7077")
 SPARK_PACKAGES = os.environ.get(
     "SPARK_PACKAGES",
@@ -25,7 +26,6 @@ def main():
         SparkSession.builder
         .appName("RawToBronzeIngestion")
         .master(SPARK_MASTER)
-        # Khai báo các gói JAR cần thiết cho Kafka và Hadoop AWS S3
         .config("spark.jars.packages", SPARK_PACKAGES)
         # Tối ưu hiệu năng shuffle cho dữ liệu nhỏ
         .config("spark.sql.shuffle.partitions", "4")
@@ -39,7 +39,7 @@ def main():
     )
 
     spark.sparkContext.setLogLevel("WARN")
-    print("[*] Starting Kafka to Bronze Ingestion Batch...")
+    print(f"[*] Starting Kafka to Bronze Ingestion Batch for topics: {KAFKA_TOPICS}")
 
     try:
         # 2. Đọc luồng dữ liệu từ Kafka
@@ -47,14 +47,13 @@ def main():
             spark.readStream
             .format("kafka")
             .option("kafka.bootstrap.servers", KAFKA_BROKER)
-            .option("subscribe", KAFKA_TOPIC)
+            .option("subscribe", KAFKA_TOPICS)
             .option("startingOffsets", "earliest")
             .option("failOnDataLoss", "false")            # Không dừng pipeline nếu gặp offset lỗi/bị xóa
             .load()
         )
 
         # 3. Lấy các trường dữ liệu thô dạng chuỗi (String) từ Kafka
-        # Lưu ý: Kafka trả về key và value ở dạng nhị phân (binary), cần ép kiểu sang STRING
         raw_json_df = kafka_df.selectExpr(
             "CAST(key AS STRING) as key",
             "CAST(value AS STRING) as value",
@@ -64,17 +63,17 @@ def main():
         )
 
         # Đường dẫn thư mục Bronze trên MinIO
-        bronze_path = f"s3a://{MINIO_BUCKET}/bronze/raw_daily_prices"
+        bronze_path = f"s3a://{MINIO_BUCKET}/bronze/raw_trades"
         checkpoint_path = f"s3a://{MINIO_BUCKET}/checkpoints/raw_to_bronze"
 
         # 4. Ghi luồng dữ liệu dạng JSON thô lên MinIO
         print(f"[*] Writing raw JSON streams to Bronze: {bronze_path}")
         query = (
             raw_json_df.writeStream
-            .format("json") # Định dạng lưu trữ (json/parquet/csv)
+            .format("json") # Định dạng lưu trữ
             .option("path", bronze_path)
             .option("checkpointLocation", checkpoint_path)
-            .trigger(availableNow=True) # Xử lý hết tin nhắn rồi tự động tắt
+            .trigger(availableNow=True) # Xử lý hết tin nhắn rồi tự động tắt (Micro-batch)
             .start()
         )
 
