@@ -11,12 +11,17 @@ from confluent_kafka import Producer
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
 
-# ============================================================
-# CẤU HÌNH KAFKA & API
-# ============================================================
-# Lấy broker từ tham số môi trường, nếu chạy từ Airflow (trong Docker) thì dùng kafka:29092
-# Nếu chạy từ máy ngoài (Host) thì truyền biến KAFKA_BROKER=localhost:9092
-KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "kafka:29092")
+# Tự động detect môi trường chạy (Docker vs Host)
+IS_DOCKER = os.path.exists("/.dockerenv")
+if not IS_DOCKER:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
+# Nếu chạy trong Docker -> dùng kafka:29092. Nếu chạy ở Host -> dùng KAFKA_BROKER_URL (localhost:9092)
+KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "kafka:29092") if IS_DOCKER else os.environ.get("KAFKA_BROKER_URL", "localhost:9092")
 KAFKA_TOPIC = "raw_daily_prices"
 
 YAHOO_API_URL = os.environ.get("YAHOO_FINANCE_URL", "https://query1.finance.yahoo.com/v8/finance/chart")

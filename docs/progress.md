@@ -1,12 +1,12 @@
 # 📈 TradeStream Analytics Pipeline - Progress Tracker
 
 ## 📊 Tổng quan Lộ trình thực hiện
-*   **Trạng thái hiện tại**: Đang thực hiện (Tái định hình cấu trúc Lakehouse)
+*   **Trạng thái hiện tại**: Đang thực hiện (Thiết lập Query Engine & Trino SQL Analytics)
 *   **Tiến độ tổng thể**: 
-    *   **Hoàn thành (Đúng hướng)**: Phase 0, Phase 1, Phase 2 (Phần ingest & tính toán cơ bản).
+    *   **Hoàn thành (Đúng hướng)**: Phase 0, Phase 1, Phase 2, Phase 3 (Lakehouse Storage).
     *   **Đã làm (Cần cập nhật lại)**: Phase 5 (Airflow), Phase 7 (Grafana) - *Hiện đang kết nối trực tiếp TimescaleDB, cần cập nhật kết nối qua Lakehouse ở các bước sau*.
-    *   **Đang thực hiện**: Phase 3 (Lakehouse Storage).
-    *   **Chưa thực hiện**: Phase 4, Phase 6, Phase 8, Phase 9.
+    *   **Đang thực hiện**: Phase 4 (Query Engine & Trino SQL Analytics).
+    *   **Chưa thực hiện**: Phase 6, Phase 8, Phase 9.
     *   **Bỏ qua / Tối giản**: Phase 7 (Bỏ BI Tool phụ, tập trung dùng Grafana), Phase 10 (Bỏ qua IaC & K8s để tiết kiệm RAM/CPU và giữ dự án gọn nhẹ).
 
 ---
@@ -42,7 +42,7 @@
 *   [ ] **Tuning & Management (Chưa làm)**: Cấu hình `spark.sql.shuffle.partitions=4` (thay vì mặc định 200) để tối ưu hiệu năng tính toán trên lượng dữ liệu nhỏ, loại bỏ empty tasks.
 *   [ ] **Nâng cấp Enterprise (Chưa làm)**: Xử lý dữ liệu đến trễ hoặc dữ liệu bị xáo trộn thứ tự (Late & Out-of-order Data) sử dụng cơ chế Watermarking hoặc Deduplication nâng cao của Spark.
 
-### Phase 3: Lakehouse Storage (MinIO + Apache Iceberg) ⏳ [ĐANG THỰC HIỆN]
+### Phase 3: Lakehouse Storage (MinIO + Apache Iceberg) 🎉 [HOÀN THÀNH 🎉]
 *   [x] Cấu hình và chuẩn bị khởi động Object Storage **MinIO** và **mc (MinIO Client)** trên Docker.
 
 *   [x] Thiết lập **Apache Iceberg Catalog** (Đã viết script `test_spark_iceberg.py` để chạy thử nghiệm JDBC Catalog Postgres + MinIO).
@@ -52,11 +52,11 @@
     *   `fact_daily_prices` (Fact bảng giá).
 *   [x] **Khởi tạo Dim Date tĩnh**: Viết script SQL/Python pre-populate dữ liệu bảng `dim_date` từ năm 2000 đến 2050 để tối ưu hóa truy vấn JOIN và đồng nhất báo cáo.
 
-*   [ ] Cấu hình PySpark ghi dữ liệu thô vào tầng **Bronze** (MinIO JSON/Parquet).
-*   [ ] Viết Spark Job biến đổi dữ liệu từ Bronze sang **Silver** (lọc trùng, validate chất lượng dữ liệu, áp dụng Window Functions tính toán chỉ báo kỹ thuật, mô hình hóa Star Schema) và ghi đè vào Iceberg tables.
-*   [ ] Thiết lập quy trình đồng bộ dữ liệu gia tăng (Incremental Sync) từ tầng Gold/Silver lên Serving DB (Postgres/TimescaleDB) một cách an toàn và gọn nhẹ.
-*   [ ] **Bảo trì hồ dữ liệu**: Viết các job thực thi bảo trì Iceberg tables bao gồm **Compaction (Optimize)** để gộp file nhỏ, **Expire Snapshots** giải phóng bộ nhớ, và **Delete Orphan Files** dọn dẹp file rác.
-*   [ ] **Nâng cấp Enterprise (Chưa làm)**: Thực hành và kiểm chứng các tính năng độc quyền của Apache Iceberg: **Time Travel** (Truy vấn ngược lịch sử bảng), **Schema Evolution** (tiến hóa cấu trúc bảng), và **Partition Evolution** (Tiến hóa phân vùng).
+*   [x] Cấu hình PySpark ghi dữ liệu thô vào tầng **Bronze** (MinIO JSON/Parquet).
+*   [x] Viết Spark Job biến đổi dữ liệu từ Bronze sang **Silver** (lọc trùng, validate chất lượng dữ liệu, áp dụng Window Functions tính toán chỉ báo kỹ thuật, mô hình hóa Star Schema) và ghi đè vào Iceberg tables.
+*   [x] Thiết lập quy trình đồng bộ dữ liệu gia tăng (Incremental Sync) từ tầng Gold/Silver lên Serving DB (Postgres/TimescaleDB) một cách an toàn và gọn nhẹ.
+*   [x] **Bảo trì hồ dữ liệu**: Viết các job thực thi bảo trì Iceberg tables bao gồm **Compaction (Optimize)** để gộp file nhỏ, **Expire Snapshots** giải phóng bộ nhớ, và **Delete Orphan Files** dọn dẹp file rác.
+*   [x] **Nâng cấp Enterprise**: Thực hành và kiểm chứng các tính năng độc quyền của Apache Iceberg: **Time Travel** (Truy vấn ngược lịch sử bảng), **Schema Evolution** (tiến hóa cấu trúc bảng), và **Partition Evolution** (Tiến hóa phân vùng).
 
 ### Phase 4: Query Engine & Trino SQL Analytics ⏳ [CHƯA THỰC HIỆN]
 *   [ ] Thiết lập service **Trino Query Engine** kết nối tới Iceberg catalog của MinIO.

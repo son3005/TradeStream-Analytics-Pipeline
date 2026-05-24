@@ -7,30 +7,42 @@ _TIMESCALE_CONN = os.environ.get(
     "TIMESCALE_CONN",
     "postgresql://postgres:postgres@timescaledb:5432/tradestream"
 )
-_parsed = urlparse(_TIMESCALE_CONN)
-DB_USER = _parsed.username or "postgres"
-DB_PASS = _parsed.password or "postgres"
-DB_HOST = _parsed.hostname or "timescaledb"
-DB_PORT = _parsed.port or 5432
-DB_NAME = (_parsed.path or "/tradestream").lstrip("/")
+
+if "postgresql://" not in _TIMESCALE_CONN:
+    # Parse libpq format: key=value key=value
+    pairs = dict(item.split("=") for item in _TIMESCALE_CONN.split() if "=" in item)
+    DB_USER = pairs.get("user", "postgres")
+    DB_PASS = pairs.get("password", "postgres")
+    DB_HOST = pairs.get("host", "timescaledb")
+    DB_PORT = int(pairs.get("port", 5432))
+    DB_NAME = pairs.get("dbname", "tradestream")
+else:
+    _parsed = urlparse(_TIMESCALE_CONN)
+    DB_USER = _parsed.username or "postgres"
+    DB_PASS = _parsed.password or "postgres"
+    DB_HOST = _parsed.hostname or "timescaledb"
+    DB_PORT = _parsed.port or 5432
+    DB_NAME = (_parsed.path or "/tradestream").lstrip("/")
+
 JDBC_URL = f"jdbc:postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
 
 
 MINIO_USER = os.environ.get("MINIO_ROOT_USER", "admin")
 MINIO_PASS = os.environ.get("MINIO_ROOT_PASSWORD", "minioadminpassword")
 MINIO_BUCKET = os.environ.get("MINIO_LAKEHOUSE_BUCKET", "lakehouse")
 MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
+SPARK_PACKAGES = os.environ.get(
+    "SPARK_PACKAGES",
+    "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,org.postgresql:postgresql:42.6.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262"
+)
 
 def main():
     spark = (
         SparkSession.builder
         .appName("CreateStarSchema")
         .master("local[*]")
-        .config("spark.jars.packages", 
-                "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,"
-                "org.postgresql:postgresql:42.6.0,"
-                "org.apache.hadoop:hadoop-aws:3.3.4,"
-                "com.amazonaws:aws-java-sdk-bundle:1.12.262")
+        .config("spark.jars.packages", SPARK_PACKAGES)
         #config catalog
         .config("spark.sql.extensions", 
                 "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
