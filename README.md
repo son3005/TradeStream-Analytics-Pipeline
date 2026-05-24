@@ -10,32 +10,32 @@ Dự án tích hợp các công nghệ xử lý dữ liệu lớn (Big Data) và
 
 ```mermaid
 flowchart TD
-    subgraph Data Sources
+    subgraph Data_Sources ["Data Sources"]
         Binance[Binance WebSockets]
         Yahoo[Yahoo Finance Chart API]
     end
 
-    subgraph Ingestion Layer
-        subgraph Producers
+    subgraph Ingestion_Layer ["Ingestion Layer"]
+        subgraph Producers ["Producers"]
             CryptoProd[crypto_producer.py]
             StockProd[stock_producer.py]
         end
         Kafka[(Kafka Clusters)]
     end
 
-    subgraph Processing Layer (Spark & Airflow)
+    subgraph Processing_Layer ["Processing Layer (Spark & Airflow)"]
         Airflow[Airflow TaskFlow API Scheduler]
         SparkIngest[ingest_raw_to_bronze.py]
         SparkTrans[transform_bronze_to_silver.py]
         SparkSync[sync_silver_to_postgres.py]
     end
 
-    subgraph Lakehouse Storage (MinIO & Apache Iceberg)
+    subgraph Lakehouse_Storage ["Lakehouse Storage (MinIO & Apache Iceberg)"]
         Bronze[(Bronze Layer: MinIO JSON Raw)]
         Silver[(Silver Layer: Apache Iceberg Parquet)]
     end
 
-    subgraph Serving & Analytics Layer
+    subgraph Serving_Analytics_Layer ["Serving & Analytics Layer"]
         Timescale[(TimescaleDB Serving DB)]
         Trino[Trino Query Engine]
         Grafana[Grafana Dashboards]
