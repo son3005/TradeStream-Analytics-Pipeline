@@ -8,6 +8,10 @@ TradeStream Analytics Pipeline là một hệ thống **Data Lakehouse** thời 
 
 Dự án tích hợp các công nghệ xử lý dữ liệu lớn (Big Data) và quản trị dữ liệu hồ chứa (Lakehouse Storage) để tách biệt luồng xử lý:
 
+![TradeStream Pipeline Architecture Diagram](docs/pipeline_2d_detailed_architecture.png)
+
+<!-- Biểu đồ Mermaid chi tiết mô tả cụ thể luồng dữ liệu của hệ thống -->
+
 ```mermaid
 flowchart TD
     subgraph Data_Sources ["Data Sources"]
@@ -15,7 +19,7 @@ flowchart TD
         Yahoo[Yahoo Finance Chart API]
     end
 
-    subgraph Ingestion_Layer ["Ingestion Layer"]
+    subgraph Ingestion_Layer ["Ingestion Layer (Kafka)"]
         subgraph Producers ["Producers"]
             CryptoProd[crypto_producer.py]
             StockProd[stock_producer.py]
@@ -23,59 +27,98 @@ flowchart TD
         Kafka[(Kafka Clusters)]
     end
 
-    subgraph Processing_Layer ["Processing Layer (Spark & Airflow)"]
-        Airflow[Airflow TaskFlow API Scheduler]
-        SparkIngest[ingest_raw_to_bronze.py]
-        SparkTrans[transform_bronze_to_silver.py]
-        SparkSync[sync_silver_to_postgres.py]
-    end
-
-    subgraph Lakehouse_Storage ["Lakehouse Storage (MinIO & Apache Iceberg)"]
+    subgraph Lakehouse_Storage ["Lakehouse Storage (MinIO & Iceberg)"]
         Bronze[(Bronze Layer: MinIO JSON Raw)]
         Silver[(Silver Layer: Apache Iceberg Parquet)]
     end
 
-    subgraph Serving_Analytics_Layer ["Serving & Analytics Layer"]
+    subgraph Processing_Layer ["Processing & Orchestration (Spark & Airflow)"]
+        Airflow[Airflow Orchestrator & Monitor]
+        SparkIngest[ingest_raw_to_bronze.py]
+        SparkTransform[transform_bronze_to_silver.py]
+        SparkSync[sync_silver_to_postgres.py]
+        SparkStreaming[Spark Streaming Hot Path Job]
+    end
+
+    subgraph Serving_Analytics_Layer ["Serving, Query & MLOps"]
         Timescale[(TimescaleDB Serving DB)]
         Trino[Trino Query Engine]
+        MLTrain[ML Training Script]
+        MLflow[MLflow Model Registry]
+        MLInference[ML Inference Script]
         Grafana[Grafana Dashboards]
     end
 
-    %% Flows
+    %% Ingestion flows
     Binance -->|Websocket Combined Streams| CryptoProd
     Yahoo -->|Async Polling every 10s| StockProd
     CryptoProd -->|crypto_trades| Kafka
     StockProd -->|stock_trades| Kafka
     
-    Airflow -->|Trigger Micro-batch every 5m| SparkIngest
-    Airflow -->|Trigger| SparkTrans
-    Airflow -->|Trigger| SparkSync
-
     Kafka -->|Consume Ticks| SparkIngest
     SparkIngest -->|Write JSON| Bronze
-    Bronze -->|Read JSON Ticks| SparkTrans
-    SparkTrans -->|Window Aggregations & MERGE INTO| Silver
+    
+    %% Cold Path
+    Bronze -->|Read JSON Ticks| SparkTransform
+    SparkTransform -->|Window Aggregations & MERGE INTO| Silver
     Silver -->|Incremental Select| SparkSync
     SparkSync -->|Upsert ON CONFLICT| Timescale
+    
+    %% Hot Path
+    Bronze -->|Read JSON Ticks| SparkStreaming
+    SparkStreaming -->|Micro-batch every 5-10s| Timescale
 
-    Silver ---|Metadata JDBC Catalog| Timescale
-    Silver -->|Parquet Files| Trino
-    Timescale -->|Real-time Ticker| Grafana
+    %% Trino Connections
+    Silver -->|lakehouse catalog| Trino
+    Timescale -->|postgres catalog| Trino
+
+    %% ML Retraining
+    Trino -->|Extract Gold Features| MLTrain
+    MLTrain -->|Register Model| MLflow
+
+    %% ML Inference
+    MLflow -->|Load Active Model| MLInference
+    Trino -->|Read Latest Gold Features| MLInference
+    MLInference -->|Run Prediction & Save| Timescale
+    
+    %% Grafana Serving
+    Timescale -->|Query Daily, Indicators, Predictions| Grafana
     Trino -->|OLAP Analytics Views| Grafana
+
+    %% Airflow Control Dotted Links
+    Airflow -.->|Trigger every 5m| SparkIngest
+    Airflow -.->|Trigger| SparkTransform
+    Airflow -.->|Trigger| SparkSync
+    Airflow -.->|Monitor & Control| SparkStreaming
+    Airflow -.->|Schedule ML Training| MLTrain
+    Airflow -.->|Schedule ML Inference| MLInference
 ```
 
-### 1. Hot Path (Real-Time Stream)
-*   **Mục tiêu**: Phục vụ biểu đồ nến thời gian thực cực nhanh với độ trễ dưới 1 giây.
-*   **Luồng hoạt động**: Dữ liệu khớp lệnh (Trades) từ các sàn Binance và Yahoo Finance API được Producer đẩy trực tiếp vào các topic Kafka tương ứng (`crypto_trades`, `stock_trades`). 
+### 1. Hot Path (Real-Time Ticks & Window Indicators)
+*   **Mục tiêu**: Xử lý và tính toán chỉ báo động (SMA, VWAP) thời gian thực phục vụ hiển thị đồ thị live trên Grafana.
+*   **Cơ chế tối ưu**: Tiêu thụ dữ liệu trực tiếp từ **Bronze Layer** (MinIO JSON Raw) thông qua Spark Streaming Job chạy theo chu kỳ **5 - 10 giây** (micro-batch) để tiết kiệm tài nguyên CPU/RAM trên môi trường local thay vì chạy continuous 24/7.
+*   **Serving**: Kết quả được ghi trực tiếp vào bảng `crypto_indicators` trên TimescaleDB.
+*   **Orchestration**: **Apache Airflow** chịu trách nhiệm giám sát (monitor) và kiểm soát trạng thái hoạt động của Streaming Job.
 
-### 2. Cold Path (Micro-batch Medallion Lakehouse)
-*   **Mục tiêu**: Lưu trữ lâu dài, dọn dẹp dữ liệu bẩn, chạy tính toán phân tích chỉ báo và huấn luyện mô hình Machine Learning.
-*   **Orchestration (Airflow)**: Một quy trình tự động được điều phối bởi Airflow (TaskFlow API) chạy định kỳ mỗi **5 phút** thực hiện 3 bước kế tiếp:
-    1.  **Bronze (Raw Ingestion)**: Tiêu thụ dữ liệu thô từ các topics Kafka thông qua PySpark Structured Streaming và lưu dưới dạng tệp JSON thô kèm siêu dữ liệu tại bucket `lakehouse/bronze/raw_trades` của **MinIO**.
-    2.  **Silver (Structured/Cleaned)**: Đọc luồng JSON từ Bronze, parse cấu trúc, loại bỏ bản ghi hỏng (đẩy lỗi vào DLQ), áp dụng **Spark Window Functions** để gom nhóm ticks giao dịch thành chỉ số nến ngày **OHLCV** (Open, High, Low, Close, Volume) và MERGE INTO (Upsert) vào bảng phân tán **Apache Iceberg** sử dụng PostgreSQL làm JDBC Catalog.
-    3.  **Serving Layer Sync**: Thực hiện đồng bộ gia tăng từ bảng Iceberg Silver sang Serving Database **TimescaleDB** bằng cơ chế `ON CONFLICT DO UPDATE` (Upsert) để phục vụ Dashboards nhanh chóng.
+### 2. Cold Path (Micro-batch Medallion Lakehouse - Đã triển khai)
+*   **Mục tiêu**: Lưu trữ lịch sử lâu dài, tính toán nến ngày OHLCV phục vụ phân tích OLAP, đồng bộ dữ liệu sạch.
+*   **Orchestration**: Được điều phối bởi Airflow DAG `realtime_cold_path_pipeline` (chạy định kỳ mỗi **5 phút** một lần):
+    1.  **Bronze (Raw Ingestion)**: Job Spark Structured Streaming chạy với cơ chế `.trigger(availableNow=True)` tiêu thụ ticks từ Kafka lưu vào Bronze Layer.
+    2.  **Silver (Refined/OHLCV)**: Job Spark Batch đọc ticks từ Bronze, gom nhóm thành nến ngày OHLCV và tính toán chỉ báo kỹ thuật ngày (`daily_return`, `price_range`), sau đó `MERGE INTO` vào bảng **Apache Iceberg** (`fact_daily_prices`) lưu dạng Parquet trên MinIO.
+    3.  **Serving (Gold Sync)**: Job Spark Batch đọc từ Silver Iceberg, thực hiện denormalize dữ liệu (JOIN với các bảng `dim_date`, `dim_assets`), và ghi đồng bộ gia tăng vào Serving Database **TimescaleDB** (`daily_prices`) bằng cơ chế `ON CONFLICT DO UPDATE` để Grafana truy vấn cực nhanh.
+
+### 3. ML Pipeline & Inference (Dự báo học máy)
+*   **Mục tiêu**: Huấn luyện và dự đoán xu hướng giá/giá đóng cửa tài sản tài chính.
+*   **ML Retraining**: Định kỳ dưới sự điều phối của **Apache Airflow**, pipeline huấn luyện truy xuất các đặc trưng lịch sử chất lượng cao từ **Gold Layer** (TimescaleDB) thông qua cổng truy vấn **Trino SQL Engine** (sử dụng PostgreSQL connector). Mô hình được lưu trữ và quản lý phiên bản trên **MLflow Model Registry**.
+*   **ML Inference (Dự báo)**: Airflow lập lịch chạy script suy diễn hàng ngày, tải mô hình active từ **MLflow**, đọc đặc trưng mới qua **Trino**, đưa ra dự báo và ghi kết quả vào bảng `daily_predictions` (TimescaleDB) phục vụ hiển thị biểu đồ so sánh xu hướng (Forecast vs Actual) trên Grafana.
+
+### 4. Lưu trữ & Legacy (Phase 1)
+*   **`yahoo_batch_producer.py`**: Producer cũ ở Phase 1 để kéo dữ liệu nến ngày thô trực tiếp từ Yahoo Finance API (với tham số `range=1d&interval=1d`) và đẩy vào Kafka topic `raw_daily_prices`.
+*   **Trạng thái**: Đã được lưu trữ và thay thế hoàn toàn bằng luồng Ingest Ticks thô tự động từ các active producers thời gian thực ở trên. Bảng Iceberg Silver giờ đây tự tổng hợp OHLCV trực tiếp từ ticks thay vì nạp nến 1 ngày thô.
+
 
 ---
+
 
 ## 📂 Cấu trúc Thư mục Dự án
 

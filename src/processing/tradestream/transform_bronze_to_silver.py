@@ -1,58 +1,23 @@
 import os
 import sys
-from urllib.parse import urlparse
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType
 from pyspark.sql.window import Window
+from src.utils.spark_helper import get_spark_session
 
 # Đảm bảo mã hóa ký tự UTF-8 được kích hoạt trên Windows
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
 
-# =====================================================================
-# 1. ĐỌC CẤU HÌNH KẾT NỐI TIMESCALEDB
-# =====================================================================
-_TIMESCALE_CONN = os.environ.get(
-    "TIMESCALE_CONN",
-    "postgresql://postgres:postgres@timescaledb:5432/tradestream"
-)
+# Cấu hình MinIO
+MINIO_BUCKET: str = os.environ.get("MINIO_LAKEHOUSE_BUCKET", "lakehouse")
 
-if "postgresql://" not in _TIMESCALE_CONN:
-    pairs = dict(item.split("=") for item in _TIMESCALE_CONN.split() if "=" in item)
-    DB_USER = pairs.get("user", "postgres")
-    DB_PASS = pairs.get("password", "postgres")
-    DB_HOST = pairs.get("host", "timescaledb")
-    DB_PORT = int(pairs.get("port", 5432))
-    DB_NAME = pairs.get("dbname", "tradestream")
-else:
-    _parsed = urlparse(_TIMESCALE_CONN)
-    DB_USER = _parsed.username or "postgres"
-    DB_PASS = _parsed.password or "postgres"
-    DB_HOST = _parsed.hostname or "timescaledb"
-    DB_PORT = _parsed.port or 5432
-    DB_NAME = (_parsed.path or "/tradestream").lstrip("/")
+def get_tick_schema() -> StructType:
+    """Định nghĩa cấu trúc schema PySpark để phân tích các giao dịch thô dạng JSON.
 
-JDBC_URL = f"jdbc:postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-# =====================================================================
-# 2. CẤU HÌNH MINIO & SPARK PACKAGES
-# =====================================================================
-MINIO_USER = os.environ.get("MINIO_ROOT_USER", "admin")
-MINIO_PASS = os.environ.get("MINIO_ROOT_PASSWORD", "minioadminpassword")
-MINIO_BUCKET = os.environ.get("MINIO_LAKEHOUSE_BUCKET", "lakehouse")
-MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
-SPARK_MASTER = os.environ.get("SPARK_MASTER", "spark://spark-master:7077")
-
-SPARK_PACKAGES = os.environ.get(
-    "SPARK_PACKAGES",
-    "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,org.postgresql:postgresql:42.6.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262"
-)
-
-def get_tick_schema():
-    """
-    Định nghĩa cấu trúc dữ liệu của một bản ghi Tick giao dịch thô.
-    Các producer sẽ đẩy dữ liệu thô dạng JSON phẳng xuống Kafka.
+    Returns:
+        StructType: Đối tượng mô tả schema của PySpark.
     """
     return StructType([
         StructField("symbol", StringType(), True),
@@ -61,30 +26,24 @@ def get_tick_schema():
         StructField("trade_time", LongType(), True)
     ])
 
-def main():
+def main() -> None:
+    """Biến đổi dữ liệu thô từ tầng Bronze sang nến ngày tầng Silver (Apache Iceberg).
+
+    Đọc dữ liệu ticks thô dạng JSON trong Bronze Layer, lọc các dòng dữ liệu không hợp lệ,
+    gom nhóm dữ liệu ticks theo ngày để tính các chỉ số nến ngày OHLCV (Open, High, Low, 
+    Close, Volume), tính chỉ báo kỹ thuật ngày (Daily Return, Price Range) bằng Window 
+    Functions, JOIN với dim_date và lưu vào bảng fact_daily_prices bằng cơ chế MERGE INTO.
+
+    Returns:
+        None
+
+    Raises:
+        Exception: Nếu lỗi đọc/ghi dữ liệu hoặc tính toán chỉ báo chuỗi thời gian.
+    """
     # =====================================================================
     # 3. KHỞI TẠO SPARK SESSION VỚI CẤU HÌNH APACHE ICEBERG CATALOG
     # =====================================================================
-    spark = (
-        SparkSession.builder
-        .appName("BronzeToSilverTransformation")
-        .master(SPARK_MASTER)
-        .config("spark.jars.packages", SPARK_PACKAGES)
-        .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-        .config("spark.sql.catalog.lakehouse", "org.apache.iceberg.spark.SparkCatalog")
-        .config("spark.sql.catalog.lakehouse.type", "jdbc")
-        .config("spark.sql.catalog.lakehouse.uri", JDBC_URL)
-        .config("spark.sql.catalog.lakehouse.jdbc.user", DB_USER)
-        .config("spark.sql.catalog.lakehouse.jdbc.password", DB_PASS)
-        .config("spark.sql.catalog.lakehouse.warehouse", f"s3a://{MINIO_BUCKET}/warehouse")
-        .config("spark.sql.catalog.lakehouse.io-impl", "org.apache.iceberg.hadoop.HadoopFileIO")
-        .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT)
-        .config("spark.hadoop.fs.s3a.access.key", MINIO_USER)
-        .config("spark.hadoop.fs.s3a.secret.key", MINIO_PASS)
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .getOrCreate()
-    )
+    spark = get_spark_session("BronzeToSilverTransformation")
 
     spark.sparkContext.setLogLevel("WARN")
     print("[*] Khởi động Spark Job: Chuyển đổi dữ liệu thô (Tick) từ Bronze sang Silver...")

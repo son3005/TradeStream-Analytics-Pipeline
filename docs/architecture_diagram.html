@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TradeStream Analytics Pipeline Architecture</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #070913;
+      --panel-bg: rgba(13, 20, 38, 0.6);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --text-color: #f3f4f6;
+      --text-muted: #9ca3af;
+      
+      --color-cold: #00f2fe;
+      --color-hot: #ff9f43;
+      --color-ml: #a18cd1;
+      --color-inference: #26de81;
+      --color-query: #feca57;
+      --color-airflow: #017a86;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: 'Outfit', sans-serif;
+      overflow: hidden;
+      width: 1300px;
+      height: 850px;
+      position: relative;
+    }
+
+    /* Column Partition Containers */
+    .column-partition {
+      position: absolute;
+      top: 40px;
+      height: 760px;
+      border: 1px dashed rgba(255, 255, 255, 0.07);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.01);
+      padding: 20px 10px;
+    }
+
+    .column-title {
+      position: absolute;
+      top: -12px;
+      left: 20px;
+      background: var(--bg-color);
+      padding: 0 10px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    /* Partitions Positions */
+    #part-ingest { left: 30px; width: 220px; }
+    #part-bronze { left: 285px; width: 220px; }
+    #part-silver { left: 540px; width: 220px; }
+    #part-serving { left: 795px; width: 225px; }
+    #part-viz { left: 1050px; width: 220px; }
+
+    /* Node Blocks */
+    .node {
+      position: absolute;
+      width: 200px;
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      z-index: 10;
+      backdrop-filter: blur(8px);
+      transition: all 0.3s ease;
+    }
+
+    .node:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .node-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .node-icon {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .node-title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .node-subtitle {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      color: var(--text-muted);
+      word-break: break-all;
+    }
+
+    /* Node Colors & Specifics */
+    .node-binance { border-left: 3px solid #f3ba2f; }
+    .node-yahoo { border-left: 3px solid #720e9e; }
+    .node-kafka { border-left: 3px solid #000000; }
+    .node-bronze { border-left: 3px solid var(--color-cold); }
+    .node-silver { border-left: 3px solid #3498db; }
+    .node-airflow { border-left: 3px solid var(--color-airflow); }
+    .node-spark { border-left: 3px solid #e25a2b; }
+    .node-trino { border-left: 3px solid #dd2a7b; }
+    .node-timescale { border-left: 3px solid #f39c12; }
+    .node-ml-train { border-left: 3px solid var(--color-ml); }
+    .node-mlflow { border-left: 3px solid var(--color-ml); }
+    .node-ml-script { border-left: 3px solid var(--color-inference); }
+    .node-grafana { border-left: 3px solid #f35a22; }
+
+    /* Node Placements */
+    /* Col 1: Sources & Kafka Ingest */
+    #node-binance { left: 40px; top: 120px; }
+    #node-yahoo { left: 40px; top: 220px; }
+    #node-kafka { left: 40px; top: 350px; }
+    #node-spark-ingest { left: 40px; top: 480px; }
+
+    /* Col 2: Lakehouse Bronze & Transform */
+    #node-bronze { left: 295px; top: 350px; }
+    #node-spark-trans { left: 295px; top: 480px; }
+
+    /* Col 3: Lakehouse Silver, Sync & Streaming */
+    #node-airflow { left: 550px; top: 40px; }
+    #node-silver { left: 550px; top: 350px; }
+    #node-spark-sync { left: 550px; top: 480px; }
+    #node-spark-hot { left: 550px; top: 610px; }
+
+    /* Col 4: Serving & MLOps */
+    #node-ml-train { left: 805px; top: 120px; }
+    #node-mlflow { left: 805px; top: 220px; }
+    #node-ml-script { left: 805px; top: 320px; }
+    #node-trino { left: 805px; top: 420px; }
+    #node-timescale-prices { left: 805px; top: 520px; }
+    #node-timescale-indicators { left: 805px; top: 620px; }
+    #node-timescale-predictions { left: 805px; top: 720px; }
+
+    /* Col 5: Visualization */
+    #node-grafana { left: 1060px; top: 420px; }
+
+    /* SVG Lines Overlay */
+    svg.connections {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1300px;
+      height: 850px;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Flow Path Legends */
+    .legend-container {
+      position: absolute;
+      top: 810px;
+      left: 30px;
+      display: flex;
+      gap: 24px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .legend-line {
+      width: 30px;
+      height: 3px;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Background Column Partitions -->
+  <div class="column-partition" id="part-ingest">
+    <div class="column-title">Ingestion & Buffer</div>
+  </div>
+  <div class="column-partition" id="part-bronze">
+    <div class="column-title">Bronze Layer</div>
+  </div>
+  <div class="column-partition" id="part-silver">
+    <div class="column-title">Silver Layer</div>
+  </div>
+  <div class="column-partition" id="part-serving">
+    <div class="column-title">Serving & MLOps</div>
+  </div>
+  <div class="column-partition" id="part-viz">
+    <div class="column-title">Visualization</div>
+  </div>
+
+  <!-- Nodes: Column 1 (Ingestion & Buffer) -->
+  <div class="node node-binance" id="node-binance">
+    <div class="node-header">
+      <div class="node-icon" style="color: #f3ba2f;">🔶</div>
+      <div class="node-title">Binance WebSocket</div>
+    </div>
+    <div class="node-subtitle">crypto_producer.py</div>
+  </div>
+
+  <div class="node node-yahoo" id="node-yahoo">
+    <div class="node-header">
+      <div class="node-icon" style="color: #720e9e;">🟣</div>
+      <div class="node-title">Yahoo Finance API</div>
+    </div>
+    <div class="node-subtitle">stock_producer.py (10s)</div>
+  </div>
+
+  <div class="node node-kafka" id="node-kafka">
+    <div class="node-header">
+      <div class="node-icon" style="filter: invert(1);">⚫</div>
+      <div class="node-title">Apache Kafka</div>
+    </div>
+    <div class="node-subtitle">crypto_trades, stock_trades</div>
+  </div>
+
+  <div class="node node-spark" id="node-spark-ingest">
+    <div class="node-header">
+      <div class="node-icon">🔥</div>
+      <div class="node-title">Spark Ingestion</div>
+    </div>
+    <div class="node-subtitle">ingest_raw_to_bronze.py</div>
+  </div>
+
+  <!-- Nodes: Column 2 (Bronze Layer & Transform) -->
+  <div class="node node-bronze" id="node-bronze">
+    <div class="node-header">
+      <div class="node-icon">📦</div>
+      <div class="node-title">Bronze Layer</div>
+    </div>
+    <div class="node-subtitle">MinIO: raw_trades (JSON)</div>
+  </div>
+
+  <div class="node node-spark" id="node-spark-trans">
+    <div class="node-header">
+      <div class="node-icon">🔥</div>
+      <div class="node-title">Spark Transform</div>
+    </div>
+    <div class="node-subtitle">transform_bronze_to_silver.py</div>
+  </div>
+
+  <!-- Nodes: Column 3 (Silver Layer, Sync & Streaming) -->
+  <div class="node node-airflow" id="node-airflow">
+    <div class="node-header">
+      <div class="node-icon">🌀</div>
+      <div class="node-title">Apache Airflow</div>
+    </div>
+    <div class="node-subtitle">DAG: realtime_cold_path_pipeline</div>
+  </div>
+
+  <div class="node node-silver" id="node-silver">
+    <div class="node-header">
+      <div class="node-icon">❄️</div>
+      <div class="node-title">Silver Layer (Iceberg)</div>
+    </div>
+    <div class="node-subtitle">fact_daily_prices (Parquet)</div>
+  </div>
+
+  <div class="node node-spark" id="node-spark-sync">
+    <div class="node-header">
+      <div class="node-icon">🔥</div>
+      <div class="node-title">Spark Sync (Gold)</div>
+    </div>
+    <div class="node-subtitle">sync_silver_to_postgres.py</div>
+  </div>
+
+  <div class="node node-spark" id="node-spark-hot">
+    <div class="node-header">
+      <div class="node-icon">🔥</div>
+      <div class="node-title">Spark Streaming (Hot)</div>
+    </div>
+    <div class="node-subtitle">Micro-batch (5s-10s)</div>
+  </div>
+
+  <!-- Nodes: Column 4 (Serving & MLOps) -->
+  <div class="node node-ml-train" id="node-ml-train">
+    <div class="node-header">
+      <div class="node-icon">🧠</div>
+      <div class="node-title">ML Training Script</div>
+    </div>
+    <div class="node-subtitle">Model Training (XGBoost)</div>
+  </div>
+
+  <div class="node node-mlflow" id="node-mlflow">
+    <div class="node-header">
+      <div class="node-icon">🎯</div>
+      <div class="node-title">MLflow Model Registry</div>
+    </div>
+    <div class="node-subtitle">Model Tracking & Registry</div>
+  </div>
+
+  <div class="node node-ml-script" id="node-ml-script">
+    <div class="node-header">
+      <div class="node-icon">🤖</div>
+      <div class="node-title">ML Inference Script</div>
+    </div>
+    <div class="node-subtitle">Inference / Predict</div>
+  </div>
+
+  <div class="node node-trino" id="node-trino">
+    <div class="node-header">
+      <div class="node-icon">🐰</div>
+      <div class="node-title">Trino SQL Engine</div>
+    </div>
+    <div class="node-subtitle">Catalogs: lakehouse, postgres</div>
+  </div>
+
+  <div class="node node-timescale" id="node-timescale-prices">
+    <div class="node-header">
+      <div class="node-icon">🐯</div>
+      <div class="node-title">TimescaleDB: Gold</div>
+    </div>
+    <div class="node-subtitle">Hypertable: daily_prices</div>
+  </div>
+
+  <div class="node node-timescale" id="node-timescale-indicators">
+    <div class="node-header">
+      <div class="node-icon">🐯</div>
+      <div class="node-title">TimescaleDB: Indicators</div>
+    </div>
+    <div class="node-subtitle">Hypertable: crypto_indicators</div>
+  </div>
+
+  <div class="node node-timescale" id="node-timescale-predictions">
+    <div class="node-header">
+      <div class="node-icon">🐯</div>
+      <div class="node-title">TimescaleDB: Predictions</div>
+    </div>
+    <div class="node-subtitle">Table: daily_predictions</div>
+  </div>
+
+  <!-- Nodes: Column 5 (Visualization) -->
+  <div class="node node-grafana" id="node-grafana">
+    <div class="node-header">
+      <div class="node-icon" style="color: #f35a22;">📈</div>
+      <div class="node-title">Grafana Dashboard</div>
+    </div>
+    <div class="node-subtitle">Realtime, OLAP & Predictions</div>
+  </div>
+
+  <!-- SVG Overlay for exact data paths -->
+  <svg class="connections">
+    <defs>
+      <!-- Arrowheads -->
+      <marker id="arrow-cold" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,2 L8,5 L0,8 Z" fill="var(--color-cold)" />
+      </marker>
+      <marker id="arrow-hot" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,2 L8,5 L0,8 Z" fill="var(--color-hot)" />
+      </marker>
+      <marker id="arrow-ml" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,2 L8,5 L0,8 Z" fill="var(--color-ml)" />
+      </marker>
+      <marker id="arrow-inference" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,2 L8,5 L0,8 Z" fill="var(--color-inference)" />
+      </marker>
+      <marker id="arrow-query" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,2 L8,5 L0,8 Z" fill="var(--color-query)" />
+      </marker>
+
+      <!-- Glow Filters -->
+      <filter id="glow-c" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="3" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+    </defs>
+
+    <!-- 1. Sources to Kafka (Gray Lines) -->
+    <path d="M 240 150 L 260 150 L 260 300 L 140 300 L 140 350" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="2" />
+    <path d="M 240 250 L 260 250 L 260 300" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="2" />
+
+    <!-- 2. Cold Path (Cyan Flow) -->
+    <!-- Kafka -> Spark Ingestion -->
+    <path d="M 140 410 L 140 445 L 140 480" fill="none" stroke="var(--color-cold)" stroke-width="2.5" marker-end="url(#arrow-cold)" filter="url(#glow-c)" />
+    <!-- Spark Ingest -> Bronze -->
+    <path d="M 240 510 L 265 510 L 265 380 L 295 380" fill="none" stroke="var(--color-cold)" stroke-width="2.5" marker-end="url(#arrow-cold)" filter="url(#glow-c)" />
+    <!-- Bronze -> Spark Transform -->
+    <path d="M 395 410 L 395 445 L 395 480" fill="none" stroke="var(--color-cold)" stroke-width="2.5" marker-end="url(#arrow-cold)" filter="url(#glow-c)" />
+    <!-- Spark Transform -> Silver -->
+    <path d="M 495 510 L 520 510 L 520 380 L 550 380" fill="none" stroke="var(--color-cold)" stroke-width="2.5" marker-end="url(#arrow-cold)" filter="url(#glow-c)" />
+    <!-- Silver -> Spark Sync -->
+    <path d="M 650 410 L 650 445 L 650 480" fill="none" stroke="var(--color-cold)" stroke-width="2.5" marker-end="url(#arrow-cold)" filter="url(#glow-c)" />
+    <!-- Spark Sync -> TimescaleDB Gold -->
+    <path d="M 750 510 L 775 510 L 775 550 L 805 550" fill="none" stroke="var(--color-cold)" stroke-width="2.5" marker-end="url(#arrow-cold)" filter="url(#glow-c)" />
+
+    <!-- 3. Hot Path (Orange Flow) -->
+    <!-- Bronze -> Spark Streaming (Hot) -->
+    <path d="M 320 410 L 320 640 L 550 640" fill="none" stroke="var(--color-hot)" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrow-hot)" filter="url(#glow-c)" />
+    <!-- Spark Streaming -> TimescaleDB Indicators -->
+    <path d="M 750 640 L 775 640 L 775 650 L 805 650" fill="none" stroke="var(--color-hot)" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrow-hot)" filter="url(#glow-c)" />
+
+    <!-- 4. ML Retraining Path (Purple Flow) -->
+    <!-- TimescaleDB Gold -> Trino (via postgres catalog) -->
+    <path d="M 805 550 L 785 550 L 785 450 L 805 450" fill="none" stroke="var(--color-ml)" stroke-width="2" marker-end="url(#arrow-ml)" />
+    <!-- Trino -> ML Training Script -->
+    <path d="M 905 420 L 905 180" fill="none" stroke="var(--color-ml)" stroke-width="2" marker-end="url(#arrow-ml)" />
+    <!-- ML Training Script -> MLflow Registry -->
+    <path d="M 905 180 L 905 220" fill="none" stroke="var(--color-ml)" stroke-width="2" marker-end="url(#arrow-ml)" />
+
+    <!-- 5. ML Inference & Prediction Path (Green Flow) -->
+    <!-- MLflow -> ML Inference Script -->
+    <path d="M 905 280 L 905 320" fill="none" stroke="var(--color-inference)" stroke-width="2" marker-end="url(#arrow-inference)" />
+    <!-- ML Inference Script -> Trino (Reads Gold features) -->
+    <path d="M 805 350 L 770 350 L 770 450 L 805 450" fill="none" stroke="var(--color-inference)" stroke-width="2" marker-end="url(#arrow-inference)" />
+    <!-- ML Inference Script -> TimescaleDB Predictions -->
+    <path d="M 1005 350 L 1025 350 L 1025 750 L 1005 750" fill="none" stroke="var(--color-inference)" stroke-width="2" marker-end="url(#arrow-inference)" />
+
+    <!-- 6. Serving to Grafana & Queries (Gold/Yellow Lines) -->
+    <!-- TimescaleDB Gold -> Grafana -->
+    <path d="M 1005 550 L 1030 550 L 1030 450 L 1060 450" fill="none" stroke="var(--color-query)" stroke-width="2" marker-end="url(#arrow-query)" />
+    <!-- TimescaleDB Indicators -> Grafana -->
+    <path d="M 1005 650 L 1040 650 L 1040 450 L 1060 450" fill="none" stroke="var(--color-query)" stroke-width="2" marker-end="url(#arrow-query)" />
+    <!-- TimescaleDB Predictions -> Grafana -->
+    <path d="M 1005 750 L 1050 750 L 1050 450 L 1060 450" fill="none" stroke="var(--color-query)" stroke-width="2" marker-end="url(#arrow-query)" />
+    <!-- Trino -> Grafana -->
+    <path d="M 1005 450 L 1060 450" fill="none" stroke="var(--color-query)" stroke-width="2" marker-end="url(#arrow-query)" />
+    <!-- Silver (Iceberg) -> Trino (lakehouse catalog query) -->
+    <path d="M 750 380 L 765 380 L 765 435 L 805 435" fill="none" stroke="var(--color-query)" stroke-width="2" marker-end="url(#arrow-query)" />
+
+    <!-- 7. Airflow Orchestration & Monitoring (Teal Dotted Lines) -->
+    <!-- Airflow -> Spark Ingestion -->
+    <path d="M 550 70 L 140 70 L 140 480" fill="none" stroke="var(--color-airflow)" stroke-dasharray="3,3" stroke-width="1.5" />
+    <!-- Airflow -> Spark Transform -->
+    <path d="M 550 80 L 395 80 L 395 480" fill="none" stroke="var(--color-airflow)" stroke-dasharray="3,3" stroke-width="1.5" />
+    <!-- Airflow -> Spark Sync -->
+    <path d="M 580 100 L 580 480" fill="none" stroke="var(--color-airflow)" stroke-dasharray="3,3" stroke-width="1.5" />
+    <!-- Airflow -> Spark Streaming (Hot path monitor) -->
+    <path d="M 610 100 L 610 610" fill="none" stroke="var(--color-airflow)" stroke-dasharray="3,3" stroke-width="1.5" />
+    <!-- Airflow -> ML Training -->
+    <path d="M 750 70 L 905 70 L 905 120" fill="none" stroke="var(--color-airflow)" stroke-dasharray="3,3" stroke-width="1.5" />
+    <!-- Airflow -> ML Inference -->
+    <path d="M 750 80 L 925 80 L 925 320" fill="none" stroke="var(--color-airflow)" stroke-dasharray="3,3" stroke-width="1.5" />
+  </svg>
+
+  <!-- Flow Legends -->
+  <div class="legend-container">
+    <div class="legend-item">
+      <div class="legend-line" style="background: var(--color-cold);"></div>
+      <span>Cold Path (Batch Lakehouse)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background: var(--color-hot); border-bottom: 2px dashed #000;"></div>
+      <span>Hot Path (Real-time Indicators 5s-10s)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background: var(--color-ml);"></div>
+      <span>ML Retrain Path (Gold Layer)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background: var(--color-inference);"></div>
+      <span>ML Inference & Prediction</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background: var(--color-query);"></div>
+      <span>OLAP & Query Paths (Trino/Grafana)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background: var(--color-airflow); border-bottom: 2px dotted #000;"></div>
+      <span>Airflow Control & Monitor</span>
+    </div>
+  </div>
+
+</body>
+</html>

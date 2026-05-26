@@ -59,19 +59,19 @@ def realtime_cold_path_pipeline():
     def ingest_kafka_to_bronze():
         """Task 1: Đọc từ Kafka và ghi JSON thô xuống Bronze Layer trên MinIO"""
         logger.info("Executing Ingestion Task (Kafka -> Bronze)...")
-        run_spark_script("/opt/airflow/src/processing/ingest_raw_to_bronze.py")
+        run_spark_script("/opt/airflow/src/processing/tradestream/ingest_raw_to_bronze.py")
 
     @task
     def transform_bronze_to_silver():
         """Task 2: Gom nhóm Ticks thành nến ngày (OHLCV) và MERGE INTO Silver Iceberg"""
         logger.info("Executing Transformation Task (Bronze -> Silver)...")
-        run_spark_script("/opt/airflow/src/processing/transform_bronze_to_silver.py")
+        run_spark_script("/opt/airflow/src/processing/tradestream/transform_bronze_to_silver.py")
 
     @task
     def sync_silver_to_postgres():
         """Task 3: Đồng bộ dữ liệu mới nhất từ Silver Iceberg sang Postgres (Serving Layer)"""
         logger.info("Executing Sync Task (Silver -> Postgres)...")
-        run_spark_script("/opt/airflow/src/processing/sync_silver_to_postgres.py")
+        run_spark_script("/opt/airflow/src/processing/tradestream/sync_silver_to_postgres.py")
 
     # Thứ tự thực thi tuần tự trong pipeline
     ingest_kafka_to_bronze() >> transform_bronze_to_silver() >> sync_silver_to_postgres()

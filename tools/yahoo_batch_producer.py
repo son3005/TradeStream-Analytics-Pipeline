@@ -5,7 +5,8 @@ import json
 import os
 import argparse
 from datetime import datetime
-from confluent_kafka import Producer
+from confluent_kafka import Producer, KafkaError, Message
+from typing import Dict, Any, List, Optional
 
 # Fix Unicode error on Windows console
 if sys.platform == 'win32':
@@ -27,16 +28,32 @@ KAFKA_TOPIC = "raw_daily_prices"
 YAHOO_API_URL = os.environ.get("YAHOO_FINANCE_URL", "https://query1.finance.yahoo.com/v8/finance/chart")
 
 # Hàm callback khi Kafka gửi message thành công hoặc thất bại
-def delivery_report(err, msg):
+def delivery_report(err: Optional[KafkaError], msg: Message) -> None:
+    """Hàm phản hồi (callback) được gọi sau khi tin nhắn được gửi thành công hoặc thất bại tới Kafka broker.
+
+    Args:
+        err (Optional[KafkaError]): Đối tượng chứa thông tin lỗi nếu việc gửi thất bại, ngược lại là None.
+        msg (Message): Đối tượng tin nhắn Kafka được xử lý gửi đi.
+
+    Returns:
+        None
+    """
     if err is not None:
         print(f"❌ Lỗi gửi Kafka ({msg.key()}): {err}")
-    # Có thể bật dòng dưới lên để debug, nhưng với 100k symbol sẽ làm spam log
-    # else:
-    #     print(f"✅ Đã gửi {msg.key()} vào {msg.topic()} [{msg.partition()}]")
 
-async def fetch_symbol(session, symbol_info, producer):
-    """
-    Gọi API Yahoo và đẩy thẳng dữ liệu thô (RAW JSON) vào Kafka với cơ chế retry và exponential backoff.
+async def fetch_symbol(session: aiohttp.ClientSession, symbol_info: Dict[str, Any], producer: Producer) -> None:
+    """Gọi API Yahoo Finance và gửi trực tiếp dữ liệu thô (raw JSON) vào Kafka broker.
+
+    Hàm này thực hiện truy vấn dữ liệu giá của mã tài sản tương ứng, áp dụng cơ chế tự động gửi lại 
+    (retry) kết hợp giãn cách số mũ (exponential backoff) khi gặp lỗi hoặc bị giới hạn tần suất (rate limited).
+
+    Args:
+        session (aiohttp.ClientSession): Phiên làm việc Client HTTP bất đồng bộ để gọi API.
+        symbol_info (Dict[str, Any]): Từ điển chứa thông tin của mã tài sản (ký hiệu, tên, loại).
+        producer (Producer): Thực thể Kafka Producer dùng để phát tin nhắn.
+
+    Returns:
+        None
     """
     symbol = symbol_info["symbol"]
     url = f"{YAHOO_API_URL}/{symbol}?range=1d&interval=1d"
@@ -97,7 +114,18 @@ async def fetch_symbol(session, symbol_info, producer):
             else:
                 break
 
-async def main(symbols_file_path):
+async def main(symbols_file_path: str) -> None:
+    """Đọc danh sách các mã tài sản từ tệp tin cấu hình và phát song song thông tin giá của chúng vào Kafka.
+
+    Khởi tạo Kafka Producer được tối ưu hóa khả năng chịu lỗi và hiệu năng mạng, sau đó
+    tạo Connection Pool gọi song song API Yahoo Finance cho danh sách các mã cấu hình.
+
+    Args:
+        symbols_file_path (str): Đường dẫn dẫn tới tệp tin cấu hình symbols.json chứa danh sách mã tài sản.
+
+    Returns:
+        None
+    """
     # Khởi tạo Kafka Producer với cấu hình tối ưu hóa khả năng chống lỗi và nén dữ liệu
     producer_conf = {
         'bootstrap.servers': KAFKA_BROKER,

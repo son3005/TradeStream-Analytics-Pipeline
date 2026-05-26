@@ -2,41 +2,31 @@ import os
 import sys
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
+from src.utils.spark_helper import get_spark_session
 
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
 
 # Đọc cấu hình từ file .env
-MINIO_USER = os.environ.get("MINIO_ROOT_USER", "admin")
-MINIO_PASS = os.environ.get("MINIO_ROOT_PASSWORD", "minioadminpassword")
 MINIO_BUCKET = os.environ.get("MINIO_LAKEHOUSE_BUCKET", "lakehouse")
-MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
 KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "kafka:29092")
 # Subscribe cùng lúc cả stock_trades và crypto_trades
 KAFKA_TOPICS = "stock_trades,crypto_trades"
-SPARK_MASTER = os.environ.get("SPARK_MASTER", "spark://spark-master:7077")
-SPARK_PACKAGES = os.environ.get(
-    "SPARK_PACKAGES",
-    "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262"
-)
 
-def main():
+def main() -> None:
+    """Tiêu thụ các giao dịch JSON thô từ Kafka và lưu trữ chúng vào tầng Bronze của MinIO.
+
+    Đăng ký đồng thời các topic cổ phiếu và tiền số, đọc dữ liệu theo các vi lô (micro-batches)
+    sử dụng trigger availableNow, và ghi các chuỗi thô vào thư mục Bronze để đảm bảo tính lâu bền.
+
+    Returns:
+        None
+
+    Raises:
+        Exception: Nếu kết nối tới Kafka broker hoặc thùng chứa (bucket) MinIO thất bại.
+    """
     # 1. Khởi tạo Spark Session hỗ trợ đọc ghi S3 (MinIO)
-    spark = (
-        SparkSession.builder
-        .appName("RawToBronzeIngestion")
-        .master(SPARK_MASTER)
-        .config("spark.jars.packages", SPARK_PACKAGES)
-        # Tối ưu hiệu năng shuffle cho dữ liệu nhỏ
-        .config("spark.sql.shuffle.partitions", "4")
-        # Cấu hình kết nối MinIO
-        .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT)
-        .config("spark.hadoop.fs.s3a.access.key", MINIO_USER)
-        .config("spark.hadoop.fs.s3a.secret.key", MINIO_PASS)
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .getOrCreate()
-    )
+    spark = get_spark_session("RawToBronzeIngestion", enable_iceberg=False)
 
     spark.sparkContext.setLogLevel("WARN")
     print(f"[*] Starting Kafka to Bronze Ingestion Batch for topics: {KAFKA_TOPICS}")

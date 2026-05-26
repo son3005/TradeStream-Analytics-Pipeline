@@ -6,7 +6,8 @@ import os
 import sys
 import time
 from dotenv import load_dotenv
-from confluent_kafka import Producer
+from confluent_kafka import Producer, KafkaError, Message
+from typing import Tuple, List, Dict, Optional, Any
 
 # 1. Cấu hình logging chuyên nghiệp
 logging.basicConfig(
@@ -36,13 +37,28 @@ producer_conf = {
 }
 producer = Producer(producer_conf)
 
-def delivery_report(err, msg):
-    """Callback function để xác nhận Kafka đã nhận message chưa"""
+def delivery_report(err: Optional[KafkaError], msg: Message) -> None:
+    """Hàm phản hồi (callback) được gọi khi tin nhắn được gửi thành công hoặc thất bại tới Kafka.
+
+    Args:
+        err (Optional[KafkaError]): Đối tượng lỗi nếu gửi thất bại, ngược lại là None.
+        msg (Message): Đối tượng tin nhắn Kafka đã được gửi.
+
+    Returns:
+        None
+    """
     if err is not None:
         logger.error(f"❌ Lỗi gửi message tới Kafka: {err}")
 
-def load_crypto_symbols():
-    """Đọc config/symbols.json để lấy danh sách coin và thiết lập mapping"""
+def load_crypto_symbols() -> Tuple[List[str], Dict[str, str]]:
+    """Tải danh sách các mã tiền số đang hoạt động và thiết lập ánh xạ chuẩn hóa của chúng.
+
+    Đọc tệp tin cấu hình config/symbols.json, lọc ra các mã tiền số và định dạng lại theo cấu trúc của sàn Binance.
+
+    Returns:
+        Tuple[List[str], Dict[str, str]]: Một Tuple chứa danh sách các chuỗi ký hiệu Binance (ví dụ: BTCUSDT)
+            và một từ điển ánh xạ từ ký hiệu Binance sang ký hiệu chuẩn hóa (ví dụ: BTC-USD).
+    """
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config', 'symbols.json')
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
@@ -65,8 +81,12 @@ def load_crypto_symbols():
         # Default fallback
         return ['BTCUSDT', 'ETHUSDT'], {'BTCUSDT': 'BTC-USD', 'ETHUSDT': 'ETH-USD'}
 
-async def stream_crypto_data():
-    """Hàm kết nối tới Binance WebSocket Multi-stream và đẩy dữ liệu vào Kafka"""
+async def stream_crypto_data() -> None:
+    """Kết nối tới Binance WebSocket Multi-stream và gửi dữ liệu giao dịch real-time vào Kafka.
+
+    Returns:
+        None
+    """
     binance_symbols, symbol_map = load_crypto_symbols()
     
     # Xây dựng Combined Stream URL
@@ -111,8 +131,12 @@ async def stream_crypto_data():
             
             logger.info(f"💰 [Crypto] Kafka <- {std_symbol}: {kafka_message['price']} USD (Vol: {kafka_message['quantity']})")
 
-async def run_resilient_producer():
-    """Vòng lặp duy trì kết nối WebSocket Binance"""
+async def run_resilient_producer() -> None:
+    """Chạy trình sản xuất dữ liệu (producer) liên tục với cơ chế tự động kết nối lại khi gặp lỗi.
+
+    Returns:
+        None
+    """
     while True:
         try:
             await stream_crypto_data()

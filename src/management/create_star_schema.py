@@ -1,72 +1,23 @@
 import os
-from urllib.parse import urlparse 
+import json
 from pyspark.sql import SparkSession
+from pyspark.sql.types import StructType, StructField, StringType
+from src.utils.spark_helper import get_spark_session
 
-#Biến môi trường 
-_TIMESCALE_CONN = os.environ.get(
-    "TIMESCALE_CONN",
-    "postgresql://postgres:postgres@timescaledb:5432/tradestream"
-)
+def main() -> None:
+    """Khởi tạo mô hình dữ liệu hình sao (Star Schema) cho Data Lakehouse.
 
-if "postgresql://" not in _TIMESCALE_CONN:
-    # Parse libpq format: key=value key=value
-    pairs = dict(item.split("=") for item in _TIMESCALE_CONN.split() if "=" in item)
-    DB_USER = pairs.get("user", "postgres")
-    DB_PASS = pairs.get("password", "postgres")
-    DB_HOST = pairs.get("host", "timescaledb")
-    DB_PORT = int(pairs.get("port", 5432))
-    DB_NAME = pairs.get("dbname", "tradestream")
-else:
-    _parsed = urlparse(_TIMESCALE_CONN)
-    DB_USER = _parsed.username or "postgres"
-    DB_PASS = _parsed.password or "postgres"
-    DB_HOST = _parsed.hostname or "timescaledb"
-    DB_PORT = _parsed.port or 5432
-    DB_NAME = (_parsed.path or "/tradestream").lstrip("/")
+    Tạo schema 'trading', các bảng Apache Iceberg: dim_assets, dim_date, 
+    và fact_daily_prices trên MinIO. Nạp dữ liệu ban đầu cho các bảng 
+    chiều thông tin (dimensions) từ các tệp cấu hình nguồn.
 
-JDBC_URL = f"jdbc:postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    Returns:
+        None
 
-
-
-MINIO_USER = os.environ.get("MINIO_ROOT_USER", "admin")
-MINIO_PASS = os.environ.get("MINIO_ROOT_PASSWORD", "minioadminpassword")
-MINIO_BUCKET = os.environ.get("MINIO_LAKEHOUSE_BUCKET", "lakehouse")
-MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
-SPARK_MASTER = os.environ.get("SPARK_MASTER", "spark://spark-master:7077")
-SPARK_PACKAGES = os.environ.get(
-    "SPARK_PACKAGES",
-    "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,org.postgresql:postgresql:42.6.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262"
-)
-
-def main():
-    spark = (
-        SparkSession.builder
-        .appName("CreateStarSchema")
-        .master(SPARK_MASTER)
-        .config("spark.jars.packages", SPARK_PACKAGES)
-        # Tối ưu hiệu năng shuffle cho dữ liệu nhỏ
-        .config("spark.sql.shuffle.partitions", "4")
-        #config catalog
-        .config("spark.sql.extensions", 
-                "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-
-        .config("spark.sql.catalog.lakehouse", 
-                "org.apache.iceberg.spark.SparkCatalog")
-                
-        .config("spark.sql.catalog.lakehouse.type", "jdbc")
-        .config("spark.sql.catalog.lakehouse.uri", JDBC_URL)
-        .config("spark.sql.catalog.lakehouse.jdbc.user", DB_USER)
-        .config("spark.sql.catalog.lakehouse.jdbc.password", DB_PASS)
-        .config("spark.sql.catalog.lakehouse.warehouse", f"s3a://{MINIO_BUCKET}/warehouse")
-        .config("spark.sql.catalog.lakehouse.io-impl", "org.apache.iceberg.hadoop.HadoopFileIO")
-        #config minio
-        .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT)
-        .config("spark.hadoop.fs.s3a.access.key", MINIO_USER)
-        .config("spark.hadoop.fs.s3a.secret.key", MINIO_PASS)
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .getOrCreate()
-    )
+    Raises:
+        Exception: Nếu có lỗi kết nối MinIO hoặc thực thi câu lệnh DDL Iceberg.
+    """
+    spark = get_spark_session("CreateStarSchema")
 
     spark.sparkContext.setLogLevel("ERROR")
 
@@ -128,7 +79,7 @@ def main():
         
         if date_count == 0:
             print("[*] Loading dim_date.csv from local container storage...")
-            csv_path = "/opt/airflow/src/storage/dim_date.csv"
+            csv_path = "/opt/airflow/src/management/dim_date.csv"
             
             # Đọc CSV từ MinIO
             date_df = (

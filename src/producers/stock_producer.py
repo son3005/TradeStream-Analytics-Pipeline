@@ -6,7 +6,8 @@ import os
 import sys
 import time
 from dotenv import load_dotenv
-from confluent_kafka import Producer
+from confluent_kafka import Producer, KafkaError, Message
+from typing import List, Dict, Optional, Any
 
 # 1. Cấu hình logging chuyên nghiệp
 logging.basicConfig(
@@ -35,13 +36,27 @@ producer_conf = {
 }
 producer = Producer(producer_conf)
 
-def delivery_report(err, msg):
-    """Callback function xác nhận Kafka đã nhận message chưa"""
+def delivery_report(err: Optional[KafkaError], msg: Message) -> None:
+    """Hàm phản hồi (callback) được gọi khi tin nhắn được gửi thành công hoặc thất bại tới Kafka.
+
+    Args:
+        err (Optional[KafkaError]): Đối tượng lỗi nếu gửi thất bại, ngược lại là None.
+        msg (Message): Đối tượng tin nhắn Kafka đã được gửi.
+
+    Returns:
+        None
+    """
     if err is not None:
         logger.error(f"❌ Lỗi gửi message tới Kafka: {err}")
 
-def load_stock_symbols():
-    """Đọc config/symbols.json để lấy danh sách cổ phiếu cần lấy giá"""
+def load_stock_symbols() -> List[str]:
+    """Tải danh sách các mã cổ phiếu đang hoạt động từ cấu hình dự án.
+
+    Đọc tệp tin config/symbols.json, lọc các tài sản thuộc loại cổ phiếu (stock) và trả về danh sách ký hiệu.
+
+    Returns:
+        List[str]: Danh sách các chuỗi ký hiệu cổ phiếu (ví dụ: ['AAPL', 'MSFT']).
+    """
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config', 'symbols.json')
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
@@ -56,8 +71,16 @@ def load_stock_symbols():
         logger.error(f"❌ Lỗi đọc file symbols.json: {e}")
         return ['AAPL', 'MSFT']
 
-async def fetch_stock_price(session, symbol):
-    """Gọi Yahoo Finance Chart API để lấy giá mới nhất của cổ phiếu"""
+async def fetch_stock_price(session: aiohttp.ClientSession, symbol: str) -> Optional[Dict[str, Any]]:
+    """Truy vấn Yahoo Finance API để lấy thông tin giá mới nhất cho một mã cổ phiếu.
+
+    Args:
+        session (aiohttp.ClientSession): Phiên làm việc HTTP client bất đồng bộ.
+        symbol (str): Ký hiệu (ticker) của mã cổ phiếu.
+
+    Returns:
+        Optional[Dict[str, Any]]: Bản ghi giao dịch đã chuẩn hóa nếu thành công, ngược lại là None.
+    """
     url = f"{YAHOO_FINANCE_URL}/{symbol}"
     # Yahoo chặn request nếu không giả lập User-Agent
     headers = {
@@ -88,8 +111,12 @@ async def fetch_stock_price(session, symbol):
         logger.error(f"❌ Lỗi fetch dữ liệu cho {symbol}: {e}")
     return None
 
-async def poll_stocks_loop():
-    """Gửi các request bất đồng bộ lấy giá các cổ phiếu định kỳ mỗi 10 giây"""
+async def poll_stocks_loop() -> None:
+    """Vòng lặp vô hạn để lấy giá của toàn bộ các cổ phiếu đang hoạt động theo chu kỳ xác định.
+
+    Returns:
+        None
+    """
     stock_symbols = load_stock_symbols()
     logger.info(f"Khởi động StockProducer cho danh sách: {stock_symbols}")
     logger.info(f"Đẩy dữ liệu tới Kafka Broker: {KAFKA_BROKER_URL}, Topic: {KAFKA_TOPIC}")

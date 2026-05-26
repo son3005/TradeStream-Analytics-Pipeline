@@ -1,8 +1,27 @@
 import csv
 from datetime import datetime, timedelta
 import os
+from typing import Optional
 
-def generate_dim_date(start_year=2000, end_year=2050, output_path=None):
+def generate_dim_date(
+    start_year: int = 2000, 
+    end_year: int = 2050, 
+    output_path: Optional[str] = None
+) -> None:
+    """Tạo tệp dữ liệu CSV cho bảng chiều Thời gian (dim_date) từ start_year đến end_year.
+
+    Tệp CSV sinh ra chứa các cột thuộc tính ngày (năm, quý, tháng, ngày, thứ tự trong tuần,
+    tên ngày, tên tháng, cờ ngày cuối tuần) phục vụ cho Star Schema trong Lakehouse.
+
+    Args:
+        start_year (int): Năm bắt đầu sinh dữ liệu. Mặc định là 2000.
+        end_year (int): Năm kết thúc sinh dữ liệu. Mặc định là 2050.
+        output_path (Optional[str]): Đường dẫn lưu trữ tệp CSV. Nếu không truyền, mặc định 
+            lưu tại thư mục chứa file script này với tên 'dim_date.csv'.
+
+    Returns:
+        None
+    """
     if output_path is None:
         # Save to raw_data or project root
         output_path = os.path.join(os.path.dirname(__file__), "dim_date.csv")

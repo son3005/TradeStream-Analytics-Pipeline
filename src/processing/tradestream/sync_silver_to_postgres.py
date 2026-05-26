@@ -1,81 +1,36 @@
 import os
 import sys
-from urllib.parse import urlparse
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
+from src.utils.spark_helper import get_spark_session, get_db_credentials
 
 # Kích hoạt chế độ mã hóa ký tự UTF-8 cho Windows để hiển thị log tiếng Việt chính xác
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
 
-# =====================================================================
-# 1. ĐỌC CẤU HÌNH KẾT NỐI DB (Cho cả Iceberg Metadata và Target Postgres)
-# =====================================================================
-_TIMESCALE_CONN = os.environ.get(
-    "TIMESCALE_CONN",
-    "postgresql://postgres:postgres@timescaledb:5432/tradestream"
-)
+def main() -> None:
+    """Đồng bộ dữ liệu nến ngày từ tầng Silver Iceberg sang Serving DB TimescaleDB.
 
-# Parse thông số kết nối cơ sở dữ liệu
-if "postgresql://" not in _TIMESCALE_CONN:
-    pairs = dict(item.split("=") for item in _TIMESCALE_CONN.split() if "=" in item)
-    DB_USER = pairs.get("user", "postgres")
-    DB_PASS = pairs.get("password", "postgres")
-    DB_HOST = pairs.get("host", "timescaledb")
-    DB_PORT = int(pairs.get("port", 5432))
-    DB_NAME = pairs.get("dbname", "tradestream")
-else:
-    _parsed = urlparse(_TIMESCALE_CONN)
-    DB_USER = _parsed.username or "postgres"
-    DB_PASS = _parsed.password or "postgres"
-    DB_HOST = _parsed.hostname or "timescaledb"
-    DB_PORT = _parsed.port or 5432
-    DB_NAME = (_parsed.path or "/tradestream").lstrip("/")
+    Đọc bảng dữ liệu fact_daily_prices, JOIN với dim_date và dim_assets để dàn phẳng 
+    dữ liệu (Denormalization), ghi vào bảng staging tạm thời trên Postgres, sau đó 
+    thực thi native UPSERT (ON CONFLICT DO UPDATE) sang bảng daily_prices của TimescaleDB.
 
-# Chuỗi JDBC URL truyền cho Spark JDBC Connector
-JDBC_URL = f"jdbc:postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    Returns:
+        None
 
-# =====================================================================
-# 2. CẤU HÌNH KẾT NỐI MINIO S3 & SPARK SESSION
-# =====================================================================
-MINIO_USER = os.environ.get("MINIO_ROOT_USER", "admin")
-MINIO_PASS = os.environ.get("MINIO_ROOT_PASSWORD", "minioadminpassword")
-MINIO_BUCKET = os.environ.get("MINIO_LAKEHOUSE_BUCKET", "lakehouse")
-MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
-SPARK_MASTER = os.environ.get("SPARK_MASTER", "spark://spark-master:7077")
-SPARK_PACKAGES = os.environ.get(
-    "SPARK_PACKAGES",
-    "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,org.postgresql:postgresql:42.6.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262"
-)
-
-def main():
+    Raises:
+        Exception: Nếu có lỗi kết nối JDBC hoặc thực thi câu lệnh SQL native trên Postgres.
+    """
     # =====================================================================
     # 3. KHỞI TẠO SPARK SESSION VỚI CATALOG LAKEHOUSE ICEBERG
     # =====================================================================
-    spark = (
-        SparkSession.builder
-        .appName("SilverToPostgresSync")
-        .master(SPARK_MASTER)
-        .config("spark.jars.packages", SPARK_PACKAGES)
-        # Tối ưu hiệu năng shuffle cho dữ liệu nhỏ
-        .config("spark.sql.shuffle.partitions", "4")
-        # Thiết lập các cấu hình cần thiết để kết nối và tương tác với các bảng Apache Iceberg
-        .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-        .config("spark.sql.catalog.lakehouse", "org.apache.iceberg.spark.SparkCatalog")
-        .config("spark.sql.catalog.lakehouse.type", "jdbc")
-        .config("spark.sql.catalog.lakehouse.uri", JDBC_URL)
-        .config("spark.sql.catalog.lakehouse.jdbc.user", DB_USER)
-        .config("spark.sql.catalog.lakehouse.jdbc.password", DB_PASS)
-        .config("spark.sql.catalog.lakehouse.warehouse", f"s3a://{MINIO_BUCKET}/warehouse")
-        .config("spark.sql.catalog.lakehouse.io-impl", "org.apache.iceberg.hadoop.HadoopFileIO")
-        # Kết nối Storage MinIO
-        .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT)
-        .config("spark.hadoop.fs.s3a.access.key", MINIO_USER)
-        .config("spark.hadoop.fs.s3a.secret.key", MINIO_PASS)
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .getOrCreate()
-    )
+    spark = get_spark_session("SilverToPostgresSync")
+    
+    # Lấy thông tin DB credentials để ghi dữ liệu JDBC
+    db_config = get_db_credentials()
+    DB_USER = db_config["user"]
+    DB_PASS = db_config["password"]
+    JDBC_URL = db_config["jdbc_url"]
 
     spark.sparkContext.setLogLevel("WARN")
     print("[*] Khởi động Spark Job: Đồng bộ dữ liệu từ tầng Silver (Iceberg) sang PostgreSQL...")

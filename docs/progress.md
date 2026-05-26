@@ -18,23 +18,21 @@
 *   [x] Thiết lập Docker Compose cơ bản cho dịch vụ nền tảng.
 *   [x] Tạo môi trường Python ảo (venv) và cài đặt dependencies (`requirements.txt`).
 *   [x] Tìm hiểu & lưu nhật ký kiến trúc: REST API vs WebSocket, Metaphor về Docker, và 4 nguyên tắc viết Dockerfile tối ưu.
-*   [x] **Lý thuyết nền tảng**: Tìm hiểu hệ sinh thái **Hadoop (HDFS, YARN, MapReduce)** và triết lý thiết kế **Data Modeling trong Big Data** (Columnar format, Partitioning vs Bucketing, Phi chuẩn hóa dữ liệu).
-
-### Phase 1: Kafka Ingestion & Producer Resilience 📨 [HOÀN THÀNH 🎉]
-*   [x] Xây dựng Python Async Producer (`yahoo_batch_producer.py`) lấy giá thị trường.
-*   [x] Tạo Kafka Topic `raw_daily_prices` trên Kafka Cluster Docker.
-*   [x] Đẩy dữ liệu thô (Raw JSON) thành công vào Kafka.
+* ### Phase 1: Kafka Ingestion & Producer Resilience 📨 [HOÀN THÀNH 🎉]
+*   [x] Xây dựng Python Async Producer (`yahoo_batch_producer.py`) lấy giá nến ngày thô (Legacy Phase 1 - Đã lưu trữ).
+*   [x] Tạo Kafka Topic `raw_daily_prices` trên Kafka Cluster Docker (Legacy Phase 1 - Đã lưu trữ).
+*   [x] Đẩy dữ liệu thô (Raw JSON) thành công vào Kafka (Legacy Phase 1 - Đã lưu trữ).
 *   [x] Tìm hiểu & lưu nhật ký: Cơ chế Partition & Offset, Replication, Zookeeper và giám sát Consumer Lag trên Kafka-UI.
 *   [x] **Lý thuyết nâng cao**: Tìm hiểu bản chất **Change Data Capture (CDC)**, cơ chế Log-based CDC của **Debezium** và quy trình tích hợp với Kafka.
 *   [x] **Tuning & Management**: Cấu hình tối ưu Producer (`acks=all` để bảo toàn dữ liệu, `linger.ms=5` và `batch.size=16384` kết hợp nén dữ liệu `snappy` để giảm tải I/O mạng).
 *   [x] **Tuning & Management**: Cấu hình Spark Consumer sử dụng Manual Commit (`kafka.enable.auto.commit=false`) kết hợp với `failOnDataLoss=false` để đảm bảo xử lý chính xác (At-least-once).
-*   [x] **Resilience & Retry Mechanism**: Bổ sung cơ chế retry với exponential backoff (1s, 2s, 4s...) và rate-limiting tối đa 100 API request đồng thời trong Python Producer.
+*   [x] **Resilience & Retry Mechanism**: Bổ dung cơ chế retry với exponential backoff (1s, 2s, 4s...) và rate-limiting tối đa 100 API request đồng thời trong Python Producer.
 *   [x] **Nghiên cứu Schema Registry**: Tìm hiểu và lưu tài liệu nghiên cứu về **Schema Registry** (Avro/Protobuf) để quản lý Schema tiến hóa và bảo toàn dữ liệu nhị phân siêu nhẹ (Thay thế container thực tế bằng tài liệu nghiên cứu lý thuyết để tối ưu tài nguyên RAM/CPU cho máy cá nhân).
-*   [x] **Nâng cấp Real-Time (Đã hoàn thành)**: Refactor `crypto_producer.py` để stream song song nhiều coin (`BTC-USD`, `ETH-USD`) từ Binance websocket với cơ chế chuẩn hóa Symbol.
-*   [x] **Nâng cấp Real-Time (Đã hoàn thành)**: Viết mới `stock_producer.py` hoạt động dưới dạng async daemon polling Yahoo Finance API mỗi 10-15 giây để giả lập ticker thời gian thực.
+*   [x] **Nâng cấp Real-Time (Active Ingest)**: Phát triển `crypto_producer.py` để stream song song nhiều coin (`BTC-USD`, `ETH-USD`) từ Binance websocket với cơ chế chuẩn hóa Symbol vào Kafka topic `crypto_trades`.
+*   [x] **Nâng cấp Real-Time (Active Ingest)**: Phát triển `stock_producer.py` hoạt động dưới dạng async daemon polling Yahoo Finance API mỗi 10 giây để gửi dữ liệu ticks vào Kafka topic `stock_trades`.
 
 ### Phase 2: Spark Processing & Medallion Architecture ⚡ [HOÀN THÀNH 🎉]
-*   [x] Viết script PySpark Batch Processor (`spark_batch_processor.py`) đọc dữ liệu thô từ Kafka.
+*   [x] Viết script PySpark Batch Processor (`spark_batch_processor.py`) đọc dữ liệu thô từ Kafka (Legacy Phase 2 - Đã refactor thành Medallion Pipeline).
 *   [x] Parse JSON động theo schema định nghĩa sẵn (Schema Enforcement).
 *   [x] **Lý thuyết nâng cao**: Tìm hiểu sự khác biệt và cơ chế của **Spark RDD vs DataFrame & Dataset**, vai trò của **Catalyst Optimizer** và **Tungsten Engine**.
 *   [x] **Refactor Logic tính toán (Window Functions)**: Loại bỏ hoàn toàn vòng lặp Python / Python UDFs không tối ưu. Viết lại logic tính toán kỹ thuật (Daily Return, Price Range) sử dụng **Spark SQL Window Functions** kết hợp phân vùng (`partitionBy("symbol").orderBy("fetch_date")`) để đảm bảo không bị tính toán lệch chéo dữ liệu giữa các mã tài sản (Đã triển khai trong `transform_bronze_to_silver.py`).
@@ -43,8 +41,8 @@
 *   [x] **Xử lý Schema Drift & DLQ**: Thiết lập cơ chế bắt lỗi khi cấu trúc dữ liệu đầu vào thay đổi đột ngột (Schema Drift) và đẩy các bản ghi lỗi vào Dead Letter Queue (DLQ) trên MinIO (`s3a://lakehouse/dlq/malformed_daily_prices`).
 *   [x] **Tuning & Management**: Cấu hình `spark.sql.shuffle.partitions=4` (thay vì mặc định 200) ở tất cả các script xử lý của Spark để tối ưu hiệu năng tính toán trên lượng dữ liệu nhỏ, loại bỏ empty tasks.
 *   [x] **Nâng cấp Enterprise**: Xử lý dữ liệu đến trễ hoặc dữ liệu bị xáo trộn thứ tự (Late & Out-of-order Data) sử dụng cơ chế Deduplication (`dropDuplicates`) kết hợp với lệnh SQL `MERGE INTO` (Upsert) của Iceberg.
-*   [x] **Nâng cấp Real-Time (Đã hoàn thành)**: Refactor `ingest_raw_to_bronze.py` để tiêu thụ dữ liệu từ các topic `*_trades` và lưu dạng Ticks phẳng xuống Bronze.
-*   [x] **Nâng cấp Real-Time (Đã hoàn thành)**: Refactor `transform_bronze_to_silver.py` để tính toán Daily OHLCV từ luồng Ticks thô bằng Spark Window Functions.
+*   [x] **Nâng cấp Medallion (Active Process)**: Refactor `ingest_raw_to_bronze.py` để tiêu thụ dữ liệu từ các active topics `crypto_trades` và `stock_trades` và ghi dạng JSON ticks thô xuống Bronze Layer.
+*   [x] **Nâng cấp Medallion (Active Process)**: Refactor `transform_bronze_to_silver.py` để tính toán Daily OHLCV từ luồng JSON ticks trong Bronze layer và upsert vào Iceberg Silver layer.
 
 ### Phase 3: Lakehouse Storage (MinIO + Apache Iceberg) 📁 [HOÀN THÀNH 🎉]
 *   [x] Cấu hình và chuẩn bị khởi động Object Storage **MinIO** và **mc (MinIO Client)** trên Docker.
