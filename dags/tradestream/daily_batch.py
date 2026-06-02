@@ -42,7 +42,7 @@ def realtime_cold_path_pipeline():
 
     def run_spark_script(script_path: str):
         cmd = [
-            "docker", "exec", "spark-master",
+            "docker", "exec", "-u", "root", "-e", "PYTHONPATH=/opt/airflow", "spark-master",
             "/opt/spark/bin/spark-submit",
             "--master", "spark://spark-master:7077",
             "--jars", JARS,

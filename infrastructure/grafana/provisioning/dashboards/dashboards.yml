@@ -41,7 +41,7 @@ providers:
     # "allowUiUpdates" — Cho phép chỉnh sửa dashboard trên giao diện web?
     #   true  = sửa thoải mái trên UI (nhưng khi restart sẽ bị ghi đè bởi file JSON)
     #   false = chỉ đọc, không sửa được trên UI
-    allowUiUpdates: true
+    allowUiUpdates: false
 
     # "options" — Cấu hình chi tiết cho kiểu "file"
     options:

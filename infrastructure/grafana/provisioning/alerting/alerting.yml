@@ -1,0 +1,78 @@
+# ============================================================
+# FILE: alerting.yml
+# MỤC ĐÍCH: Cấu hình các cảnh báo tự động trên Grafana
+# ============================================================
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: 'TradeStream Alerts'
+    folder: 'TradeStream'
+    interval: 1m
+    rules:
+      # Cảnh báo 1: Model dự báo sai 3 ngày liên tiếp
+      - uid: ml_model_consecutive_failures
+        title: 'ML Model 3-Day Consecutive Failures'
+        condition: B
+        for: 1m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 259200  # 3 ngày (3 * 24 * 3600)
+              to: 0
+            datasourceUid: TimescaleDB
+            model:
+              rawSql: "WITH actual_directions AS (SELECT fetch_date, symbol, CASE WHEN close_price > LAG(close_price, 1) OVER (PARTITION BY symbol ORDER BY fetch_date) THEN 1 ELSE 0 END AS actual_direction FROM daily_prices), mismatches AS (SELECT p.prediction_date, p.symbol, CASE WHEN p.predicted_direction != a.actual_direction THEN 1 ELSE 0 END AS is_mismatch FROM daily_predictions p INNER JOIN actual_directions a ON p.symbol = a.symbol AND p.prediction_date = a.fetch_date), consecutive_mismatches AS (SELECT symbol, prediction_date, sum(is_mismatch) OVER (PARTITION BY symbol ORDER BY prediction_date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS last_3_days_mismatch_count FROM mismatches) SELECT prediction_date::timestamp AS \"time\", symbol, last_3_days_mismatch_count FROM consecutive_mismatches WHERE prediction_date >= NOW() - INTERVAL '2 days'"
+              format: "table"
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [3]
+                    type: gte
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  type: threshold
+              type: threshold
+        labels:
+          severity: critical
+        annotations:
+          summary: 'ML Model consecutive failures alert'
+          description: 'Mô hình ML dự báo sai hướng đi giá liên tiếp trong 3 ngày đối với symbol {{ $labels.symbol }}. Cần kiểm tra lại mô hình.'
+
+      # Cảnh báo 2: Dữ liệu hot path bị trễ quá 2 phút
+      - uid: hot_path_streaming_delay
+        title: 'Hot Path Streaming Ingestion Delay'
+        condition: B
+        for: 1m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300  # 5 phút (300 giây)
+              to: 0
+            datasourceUid: TimescaleDB
+            model:
+              rawSql: "SELECT NOW()::timestamp AS \"time\", symbol, EXTRACT(EPOCH FROM (NOW() - MAX(window_end))) AS seconds_since_last_indicator FROM crypto_indicators GROUP BY symbol"
+              format: "table"
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [120]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  type: threshold
+              type: threshold
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Hot Path Ingestion Delay Alert'
+          description: 'Luồng dữ liệu thời gian thực (Hot Path) bị trễ quá 2 phút (120 giây) đối với symbol {{ $labels.symbol }}. Vui lòng kiểm tra lại Kafka Producer và Spark Structured Streaming job.'

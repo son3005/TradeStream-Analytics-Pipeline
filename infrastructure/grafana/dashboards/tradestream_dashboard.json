@@ -262,6 +262,200 @@
       ],
       "title": "Recent Trading Data (Raw Table)",
       "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "trinodb-trino-datasource",
+        "uid": "Trino"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Volume",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "trinodb-trino-datasource",
+            "uid": "Trino"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT cast(d.full_date as timestamp) AS time, f.symbol, sum(f.volume) AS volume FROM lakehouse.trading.fact_daily_prices f JOIN lakehouse.trading.dim_date d ON f.date_key = d.date_key WHERE $__timeFilter(cast(d.full_date as timestamp)) GROUP BY cast(d.full_date as timestamp), f.symbol ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Historical Trading Volume (Iceberg via Trino)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Direction (1: Up, 0: Down)",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "Down"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "Up"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH actual_directions AS (SELECT fetch_date, symbol, CASE WHEN close_price > LAG(close_price, 1) OVER (PARTITION BY symbol ORDER BY fetch_date) THEN 1 ELSE 0 END AS actual_direction FROM daily_prices) SELECT p.prediction_date::timestamp AS time, p.symbol || ' (Predicted)' AS metric, p.predicted_direction AS value FROM daily_predictions p INNER JOIN actual_directions a ON p.symbol = a.symbol AND p.prediction_date = a.fetch_date WHERE $__timeFilter(p.prediction_date) UNION ALL SELECT a.fetch_date::timestamp AS time, a.symbol || ' (Actual)' AS metric, a.actual_direction AS value FROM actual_directions a INNER JOIN daily_predictions p ON p.symbol = a.symbol AND p.prediction_date = a.fetch_date WHERE $__timeFilter(a.fetch_date) ORDER BY time, metric",
+          "refId": "A"
+        }
+      ],
+      "title": "ML Price Direction: Forecast vs. Actual",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
@@ -282,5 +476,5 @@
   "timezone": "utc",
   "title": "TradeStream Market Overview",
   "uid": "tradestream-overview",
-  "version": 2
+  "version": 3
 }

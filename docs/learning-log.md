@@ -728,7 +728,31 @@ Trong các hệ thống dữ liệu doanh nghiệp lớn, việc đồng bộ d�
     - Bảng `daily_predictions` trong TimescaleDB được thiết kế làm Hypertable phân vùng theo thời gian.
     - Điểm mấu chốt: Lưu kết quả dự đoán với trường `prediction_date` là **ngày tiếp theo** (ngày được dự báo). Khi ngày hôm sau kết thúc và giá thực tế được Cold Path đồng bộ vào bảng `daily_prices` (`fetch_date`), ta có thể thực hiện một truy vấn SQL JOIN đơn giản `ON prediction_date = fetch_date` để vẽ biểu đồ so khớp trực quan Forecast vs Actual trên Grafana Dashboard, giúp đánh giá độ lệch của mô hình trực tuyến.
 
+---
 
+### Ngày 12 (Triển khai, Vận hành và Tối ưu hóa Luồng Hot Path & Dashboard Grafana)
+- **Triển khai thành công luồng xử lý thời gian thực**:
+  - Tích hợp và chạy song song các async producers (`crypto_producer.py` và `stock_producer.py`) đẩy ticks liên tục vào Kafka.
+  - Vận hành Spark Structured Streaming `stream_hot_path.py` thực hiện gom nhóm Sliding Window 1 phút, trượt 10 giây và lọc watermark.
+  - Sử dụng sink foreachBatch để thực hiện staging và upsert an toàn vào TimescaleDB qua JDBC JVM Connection của Spark Driver.
+  - Triển khai Airflow DAG `stream_hot_path_dag.py` tự động phát hiện trạng thái và phục hồi tiến trình ngầm (detached daemon) trên Spark master.
+- **Tối ưu hóa hiển thị trực quan (Grafana Dashboards)**:
+  - Khởi tạo dashboard chuyên biệt `tradestream_hot_path_dashboard.json` phục vụ Hot Path thời gian thực.
+  - *Tối ưu hóa tỷ lệ trục Y*: Do sự chênh lệch lớn giữa mốc giá Crypto (BTC ~71K, ETH ~2K) và Stock (AAPL ~300, MSFT ~460), việc gom chung vào một biểu đồ làm nén trục Y và ẩn các biến động nhỏ. Ta đã tách riêng biệt thành các panel chuyên dụng cho nhóm Crypto và Stocks để biểu diễn biểu đồ đường động cực kỳ trực quan và chuyên nghiệp.
+  - Thiết lập thuộc tính `allowUiUpdates: false` trong file cấu hình provisioning của Grafana để đồng nhất đĩa cứng làm nguồn chân lý duy nhất (source of truth), ép Grafana tự động ghi đè và nạp lại khi file cấu hình dashboard JSON thay đổi.
 
+---
 
-
+### Ngày 13 (Hoàn thành Phase 7: Tích hợp Trino, ML Predictions và Unified Alerting)
+- **Tích hợp Trino Datasource cho Phân tích Dài hạn (Cold Path)**:
+  - Cấu hình thành công plugin `trino-datasource` cho Grafana và thiết lập datasource Trino trỏ đến container coordinator `http://trino:8080` dùng chung mạng nội bộ Docker.
+  - Thiết kế panel trực quan hóa khối lượng giao dịch lịch sử truy vấn trực tiếp từ tầng Silver Iceberg trên MinIO thông qua Trino. Câu lệnh SQL thực hiện JOIN giữa Fact table `fact_daily_prices` và Dimension table `dim_date` trên khóa `date_key`, đồng thời áp dụng macro `$__timeFilter` để tối ưu hóa khoảng thời gian quét.
+- **Trực quan hóa đối chiếu ML Forecast vs Actual**:
+  - Xây dựng panel so sánh hướng đi giá thực tế vs hướng đi giá dự đoán của mô hình AI.
+  - Sử dụng CTE trong SQL để tính toán chỉ báo hướng đi thực tế (1 nếu tăng, 0 nếu giảm/phẳng so với ngày trước đó) bằng hàm cửa sổ `LAG` trước khi áp dụng bộ lọc thời gian `$__timeFilter` của Grafana. Giải pháp này giúp tránh hiện tượng mất dữ liệu biên của hàm `LAG` (lỗi null dòng đầu tiên khi lọc khoảng thời gian).
+  - Kết hợp kết quả với bảng `daily_predictions` bằng lệnh `UNION ALL` để định dạng dữ liệu đầu ra chuẩn dạng thời gian (time series) với các cột `time`, `metric`, `value` giúp Grafana vẽ các đường đối chiếu cực kỳ trực quan.
+- **Cấu hình Cảnh báo Tự động (Unified Alerting)**:
+  - Thiết lập hệ thống cảnh báo tự động thông qua cơ chế provisioning của Grafana với file `alerting.yml`:
+    1. **Model failure alert**: Phát hiện khi mô hình AI dự báo sai hướng đi giá liên tiếp trong 3 ngày (`last_3_days_mismatch_count >= 3`).
+    2. **Ingestion delay alert**: Phát hiện luồng dữ liệu Hot Path bị dừng hoặc trễ quá 2 phút không có bản ghi mới (`seconds_since_last_indicator > 120`).
+  - Giải quyết lỗi validator `invalidRelativeTime` bằng cách khai báo trường `relativeTimeRange` (ví dụ: `from: 259200` cho 3 ngày hoặc `from: 300` cho 5 phút) cho các query block bên trong file cấu hình provisioning của Grafana.

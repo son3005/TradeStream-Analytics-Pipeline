@@ -100,3 +100,12 @@ datasources:
     #   true  = người dùng có thể thay đổi URL, password... trên UI
     #   false = khóa cứng, chỉ sửa được bằng cách sửa file YAML này
     editable: true
+
+  - name: Trino
+    uid: Trino
+    type: trinodb-trino-datasource
+    access: proxy
+    url: http://trino:8080
+    user: admin
+    jsonData:
+      authType: none

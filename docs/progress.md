@@ -13,7 +13,7 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
     *   **Phase 4**: Query Engine & Trino SQL Analytics 🔍 `[HOÀN THÀNH]`
     *   **Phase 5**: Airflow Orchestration & Modern Workflow 🎼 `[HOÀN THÀNH]`
 *   **Luồng HOT PATH (Real-Time Spark Streaming & UI)**:
-    *   **Phase 7**: Grafana Dashboard & Real-Time Hot Path 📊 `[ĐANG THỰC HIỆN]`
+    *   **Phase 7**: Grafana Dashboard & Real-Time Hot Path 📊 `[HOÀN THÀNH]`
 *   **Luồng ML PATH (MLOps & Predictions)**:
     *   **Phase 6**: Machine Learning Pipeline & MLOps ⏳ `[ĐANG THỰC HIỆN]`
 *   **Vận hành & Chất lượng (Production Hardening)**:
@@ -168,7 +168,7 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
 
 ---
 
-### Phase 7 [HOT PATH & UI]: Grafana Dashboard & Real-Time Hot Path 📊 [ĐANG THỰC HIỆN ⏳]
+### Phase 7 [HOT PATH & UI]: Grafana Dashboard & Real-Time Hot Path 📊 [HOÀN THÀNH 🎉]
 
 *   **Tổng quan luồng Hot Path**:
     ```
@@ -179,7 +179,7 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
     ```
 
 *   **Real-Time Hot Path (Hướng dẫn thực hiện)**:
-    *   [ ] **Bước 7.1: Phát triển Spark Structured Streaming Job (`src/processing/tradestream/stream_hot_path.py`)**:
+    *   [x] **Bước 7.1: Phát triển Spark Structured Streaming Job (`src/processing/tradestream/stream_hot_path.py`)**:
         *   *Đọc Stream*: Kết nối tới các topics Kafka `crypto_trades` và `stock_trades`:
             ```python
             kafka_stream = (
@@ -205,7 +205,7 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
                 )
             )
             ```
-    *   [ ] **Bước 7.2: Thực hiện ghi (upsert) thời gian thực bằng `foreachBatch` vào TimescaleDB**:
+    *   [x] **Bước 7.2: Thực hiện ghi (upsert) thời gian thực bằng `foreachBatch` vào TimescaleDB**:
         *   *Nhiệm vụ*: Vì Spark Structured Streaming không hỗ trợ upsert (ON CONFLICT) mặc định cho JDBC Sink, cần viết hàm ghi tùy chỉnh:
             ```python
             def write_to_timescale(batch_df, batch_id):
@@ -238,15 +238,15 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
                 .start()
             )
             ```
-    *   [ ] **Bước 7.3: Thiết lập Airflow DAG giám sát Streaming Job (`dags/tradestream/stream_hot_path_dag.py`)**:
+    *   [x] **Bước 7.3: Thiết lập Airflow DAG giám sát Streaming Job (`dags/tradestream/stream_hot_path_dag.py`)**:
         *   Sử dụng BashOperator kích hoạt chạy ngầm hoặc theo dõi trạng thái Spark Structured Streaming job thông qua API của Spark Master hoặc Spark REST API để đảm bảo luồng streaming chạy liên tục 24/7.
 
 *   **Grafana Visualization (Hướng dẫn thực hiện)**:
-    *   [ ] **Bước 7.4: Cấu hình TimescaleDB Datasource cho Biểu đồ Nến & Chỉ báo (Hot Path)**:
+    *   [x] **Bước 7.4: Cấu hình TimescaleDB Datasource cho Biểu đồ Nến & Chỉ báo (Hot Path)**:
         *   Thiết lập truy vấn lấy dữ liệu từ bảng `crypto_indicators` với interval ngắn (ví dụ: quét 5s/lần) để hiển thị đường SMA/VWAP thời gian thực song song với biểu đồ giá.
-    *   [ ] **Bước 7.5: Cấu hình Trino Datasource cho Phân tích Dài hạn (Cold Path)**:
+    *   [x] **Bước 7.5: Cấu hình Trino Datasource cho Phân tích Dài hạn (Cold Path)**:
         *   Tạo panel sử dụng Trino catalog kết nối Iceberg để vẽ biểu đồ so sánh khối lượng và xu hướng tích lũy theo tháng/năm.
-    *   [ ] **Bước 7.6: Trực quan hóa ML Predictions (Forecast vs Actual)**:
+    *   [x] **Bước 7.6: Trực quan hóa ML Predictions (Forecast vs Actual)**:
         *   *Nhiệm vụ*: Vẽ biểu đồ so sánh xu hướng dự báo của mô hình với giá đóng cửa thực tế xảy ra.
         *   *Truy vấn SQL mẫu phục vụ panel*:
             ```sql
@@ -263,7 +263,7 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
             WHERE p.symbol = 'BTC-USD' AND p.prediction_date >= NOW() - INTERVAL '30 days'
             ORDER BY time;
             ```
-    *   [ ] **Bước 7.7: Cấu hình Alerting trên Grafana**:
+    *   [x] **Bước 7.7: Cấu hình Alerting trên Grafana**:
         *   Thiết lập cảnh báo tự động gửi qua Telegram/Email nếu phát hiện model dự báo sai quá 3 ngày liên tiếp hoặc dữ liệu Hot Path bị trễ quá 2 phút không có bản ghi mới.
 
 ### Phase 8: Data Quality, Lineage & Alerting ⏳ [CHƯA THỰC HIỆN]

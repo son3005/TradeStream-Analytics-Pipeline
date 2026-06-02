@@ -161,12 +161,31 @@ SPARK_PACKAGES=org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.icebe
 
 ## 🚀 Hướng dẫn Triển khai & Vận hành Local
 
-### Bước 1: Khởi động Hạ tầng Docker Services
-Chạy lệnh sau tại thư mục gốc dự án để khởi chạy toàn bộ container (Zookeeper, Kafka, MinIO, Spark, Airflow, TimescaleDB, Trino, Grafana):
+### Bước 1: Khởi động và Khởi tạo Hệ thống (Chạy lần đầu / Reset)
+Để tiện lợi cho việc cài đặt ban đầu hoặc khi bạn cần dọn dẹp (reset) toàn bộ dữ liệu Docker khi ổ cứng bị nặng, dự án cung cấp sẵn kịch bản khởi tạo tự động.
 
-```bash
-docker compose up -d
-```
+Kịch bản này sẽ tự động dừng container cũ, khởi chạy các dịch vụ Docker cần thiết, kiểm tra trạng thái hoạt động (healthy) của TimescaleDB, MinIO, Kafka và tự động thực thi Spark Job để khởi tạo mô hình hình sao (Star Schema) cùng dữ liệu Dim tĩnh ban đầu.
+
+*   **Trên Windows (Sử dụng PowerShell)**:
+    ```powershell
+    # Khởi chạy giữ nguyên dữ liệu hiện tại
+    ./tools/init_project.ps1
+
+    # HOẶC Khởi chạy và XÓA SẠCH toàn bộ volume dữ liệu cũ (Khuyên dùng khi chạy lần đầu hoặc reset)
+    ./tools/init_project.ps1 -Wipe
+    ```
+
+*   **Trên Linux / macOS / Git Bash**:
+    ```bash
+    # Cấp quyền thực thi nếu chạy lần đầu
+    chmod +x tools/init_project.sh
+
+    # Khởi chạy giữ nguyên dữ liệu hiện tại
+    ./tools/init_project.sh
+
+    # HOẶC Khởi chạy và XÓA SẠCH toàn bộ volume dữ liệu cũ (Khuyên dùng khi chạy lần đầu hoặc reset)
+    ./tools/init_project.sh --wipe
+    ```
 
 ### Bước 2: Thiết lập Môi trường Python Local
 Khởi tạo và kích hoạt virtual environment:
@@ -189,15 +208,15 @@ pip install -r requirements.txt
 Chạy các Producers ở các terminal độc lập (hoặc chạy ngầm):
 
 ```bash
-# Stream dữ liệu Crypto thời gian thực
+# Stream dữ liệu Crypto thời gian thực từ Binance websockets
 python src/producers/crypto_producer.py
 
-# Poll dữ liệu giá cổ phiếu thời gian thực (10s/lần)
+# Poll dữ liệu giá cổ phiếu thời gian thực từ Yahoo Finance API (10s/lần)
 python src/producers/stock_producer.py
 ```
 
 ### Bước 4: Kiểm thử / Kích hoạt Pipelines thủ công
-Nếu muốn kiểm thử nhanh tiến trình Cold Path mà không cần đợi Airflow trigger, bạn có thể gửi trực tiếp các Spark submit job lên cluster bằng Docker:
+Nếu muốn kiểm thử nhanh tiến trình Cold Path mà không cần đợi Airflow trigger (chạy 5 phút/lần), bạn có thể gửi trực tiếp các Spark submit job lên cluster bằng Docker:
 
 ```bash
 # 1. Ingest raw ticks từ Kafka sang MinIO Bronze Layer
