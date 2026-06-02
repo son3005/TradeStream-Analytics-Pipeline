@@ -756,3 +756,19 @@ Trong các hệ thống dữ liệu doanh nghiệp lớn, việc đồng bộ d�
     1. **Model failure alert**: Phát hiện khi mô hình AI dự báo sai hướng đi giá liên tiếp trong 3 ngày (`last_3_days_mismatch_count >= 3`).
     2. **Ingestion delay alert**: Phát hiện luồng dữ liệu Hot Path bị dừng hoặc trễ quá 2 phút không có bản ghi mới (`seconds_since_last_indicator > 120`).
   - Giải quyết lỗi validator `invalidRelativeTime` bằng cách khai báo trường `relativeTimeRange` (ví dụ: `from: 259200` cho 3 ngày hoặc `from: 300` cho 5 phút) cho các query block bên trong file cấu hình provisioning của Grafana.
+
+---
+
+### Ngày 14 (Cấu hình bảo mật .env, Giải quyết lỗi PYTHONPATH trên Triggerer & Tối ưu hóa Alert Hyperlinks cho Telegram HTML)
+- **Bảo mật và cấu hình biến môi trường qua file `.env`**:
+  - Chuyển toàn bộ cấu hình nhạy cảm (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) ra file cấu hình môi trường [.env](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/.env) thay vì để tĩnh trong Airflow Variables.
+  - Sử dụng tùy chọn `env_file: - .env` trên Docker Compose để ánh xạ tự động các biến này vào 4 container lõi của Airflow: `airflow-webserver`, `airflow-scheduler`, `airflow-triggerer`, và `airflow-dag-processor`.
+- **Khắc phục lỗi PYTHONPATH trong Triggerer**:
+  - Khi triển khai các Trigger không đồng bộ (`DockerSparkJobTrigger`) chạy trên service `airflow-triggerer`, tiến trình triggerer ném lỗi `ModuleNotFoundError: No module named 'tradestream'` do không tìm thấy gói mã nguồn tuỳ chỉnh của dự án.
+  - Giải quyết bằng cách bổ sung biến môi trường `PYTHONPATH: /opt/airflow/dags:/opt/airflow` vào cấu hình các container trong [docker-compose.yml](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/docker-compose.yml), đảm bảo việc import các custom module đồng nhất ở mọi tiến trình.
+- **Tối ưu hóa định dạng tin nhắn Telegram (HTML parse mode & Hyperlink 127.0.0.1)**:
+  - **Sự cố 1 (Cú pháp Markdown)**: Tên định danh của các manual run trong Airflow 3.x sử dụng ký tự gạch dưới kép `__` (ví dụ: `manual__2026-06-02T...`), ký tự này xung đột trực tiếp với cú pháp định dạng của Telegram Markdown, làm hỏng trình phân tích liên kết và hiển thị URL dưới dạng text thô.
+    - *Giải pháp*: Chuyển đổi toàn bộ logic tin nhắn sang sử dụng `parse_mode="HTML"`. Sử dụng thư viện `html` của Python (`html.escape()`) để mã hoá an toàn tất cả các biến động tránh lỗi parse XML khi chuỗi exception chứa các ký tự `<`, `>`.
+  - **Sự cố 2 (Trình phân tích URL của Telegram)**: Telegram Client Parser không nhận diện `localhost` là một tên miền hợp lệ do thiếu đuôi TLD (dấu chấm `.`), vì thế thẻ `<a href="http://localhost:8085/...">` bị render thành text thường.
+    - *Giải pháp*: Ánh xạ lại hostname `localhost` sang địa chỉ IP local loopback **`127.0.0.1`** (tức `http://127.0.0.1:8085/...`). Do IP chứa các dấu chấm phân tách, Telegram nhận diện chuẩn xác 100% làm đường link màu xanh nhấp được dẫn thẳng tới log của Airflow UI.
+

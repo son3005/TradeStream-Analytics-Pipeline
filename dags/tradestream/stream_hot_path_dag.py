@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import subprocess
 import logging
 from airflow.decorators import dag, task
+from tradestream.utils.alerts import send_telegram_alert
 
 logger = logging.getLogger("realtime_hot_path_pipeline")
 
@@ -16,8 +17,9 @@ default_args = {
     "depends_on_past": False,
     "email_on_failure": False,
     "email_on_retry": False,
-    "retries": 1,
-    "retry_delay": timedelta(minutes=1),
+    "retries": 2,
+    "retry_delay": timedelta(minutes=2),
+    "on_failure_callback": send_telegram_alert,
 }
 
 @dag(

@@ -87,9 +87,9 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
 *   [x] **Chuyển đổi Executor**: Chuyển cấu hình Airflow sang **LocalExecutor** (hoặc Sequential với multi-threading hỗ trợ) để chạy các task ổn định.
 *   [x] **Lập lịch Micro-batch**: Điều chỉnh DAG chạy mỗi 5 phút một lần (`*/5 * * * *`) để xử lý thời gian thực Cold Path.
 *   [x] **Tự động hóa bảo trì**: Thiết kế các job bảo trì Iceberg tables (Compaction, Expire Snapshots) chạy định kỳ để dọn dẹp các tệp nhỏ sinh ra do micro-batch.
-*   [ ] **Tuning & Management (Chưa làm)**: Chuyển toàn bộ mật khẩu, thông tin nhạy cảm vào *Airflow Connections & Variables* (thay vì code cứng).
-*   [ ] **Tuning & Management (Chưa làm)**: Tích hợp cơ chế tự động chạy lại (Retries) và cơ chế báo lỗi thông qua Slack/Telegram Alert.
-*   [ ] **Nâng cấp Enterprise (Chưa làm)**: Thay thế việc đồng bộ cứng Spark Job bằng **Deferrable Operators** (Triggerer không đồng bộ) để giải phóng tài nguyên worker của Airflow trong lúc chờ Spark chạy xong.
+*   [x] **Tuning & Management**: Chuyển toàn bộ cấu hình nhạy cảm và token vào file [.env](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/.env) và đồng bộ hóa qua môi trường của các dịch vụ Docker.
+*   [x] **Tuning & Management**: Tích hợp cơ chế tự động chạy lại (Retries) và cơ chế báo lỗi tự động qua Telegram Alert (đường link log dạng HTML click được trực tiếp từ host).
+*   [x] **Nâng cấp Enterprise**: Thay thế việc đồng bộ cứng Spark Job bằng **Deferrable Operators** (Triggerer không đồng bộ) để giải phóng tài nguyên worker của Airflow trong lúc chờ Spark chạy xong.
 ### Phase 6 [ML PATH]: Machine Learning Pipeline & MLOps ⏳ [ĐANG THỰC HIỆN ⏳]
 
 *   **Tổng quan luồng máy học (ML Path)**:

@@ -4,9 +4,10 @@
 # ============================================================
 
 from datetime import datetime, timedelta
-import subprocess
 import logging
-from airflow.decorators import dag, task
+from airflow.decorators import dag
+from tradestream.operators.docker_spark_operator import DockerSparkSubmitOperator
+from tradestream.utils.alerts import send_telegram_alert
 
 logger = logging.getLogger("realtime_cold_path_pipeline")
 
@@ -15,8 +16,9 @@ default_args = {
     "depends_on_past": False,
     "email_on_failure": False,
     "email_on_retry": False,
-    "retries": 1,
-    "retry_delay": timedelta(minutes=1),
+    "retries": 2,
+    "retry_delay": timedelta(minutes=2),
+    "on_failure_callback": send_telegram_alert,
 }
 
 @dag(
@@ -31,50 +33,26 @@ default_args = {
 )
 def realtime_cold_path_pipeline():
     
-    # Định nghĩa các JARs dùng chung
-    JARS = ",".join([
-        "/opt/spark/user-jars/spark-sql-kafka-0-10_2.12-3.5.3.jar",
-        "/opt/spark/user-jars/spark-token-provider-kafka-0-10_2.12-3.5.3.jar",
-        "/opt/spark/user-jars/kafka-clients-3.4.1.jar",
-        "/opt/spark/user-jars/commons-pool2-2.12.0.jar",
-        "/opt/spark/user-jars/postgresql-42.6.0.jar",
-    ])
+    ingest_kafka_to_bronze = DockerSparkSubmitOperator(
+        task_id="ingest_kafka_to_bronze",
+        script_path="/opt/airflow/src/processing/tradestream/ingest_raw_to_bronze.py",
+        poll_interval=10
+    )
 
-    def run_spark_script(script_path: str):
-        cmd = [
-            "docker", "exec", "-u", "root", "-e", "PYTHONPATH=/opt/airflow", "spark-master",
-            "/opt/spark/bin/spark-submit",
-            "--master", "spark://spark-master:7077",
-            "--jars", JARS,
-            script_path
-        ]
-        logger.info(f"Running command: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise Exception(f"Spark script {script_path} failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
-        logger.info(f"STDOUT:\n{result.stdout}")
-        return result.stdout
+    transform_bronze_to_silver = DockerSparkSubmitOperator(
+        task_id="transform_bronze_to_silver",
+        script_path="/opt/airflow/src/processing/tradestream/transform_bronze_to_silver.py",
+        poll_interval=10
+    )
 
-    @task
-    def ingest_kafka_to_bronze():
-        """Task 1: Đọc từ Kafka và ghi JSON thô xuống Bronze Layer trên MinIO"""
-        logger.info("Executing Ingestion Task (Kafka -> Bronze)...")
-        run_spark_script("/opt/airflow/src/processing/tradestream/ingest_raw_to_bronze.py")
-
-    @task
-    def transform_bronze_to_silver():
-        """Task 2: Gom nhóm Ticks thành nến ngày (OHLCV) và MERGE INTO Silver Iceberg"""
-        logger.info("Executing Transformation Task (Bronze -> Silver)...")
-        run_spark_script("/opt/airflow/src/processing/tradestream/transform_bronze_to_silver.py")
-
-    @task
-    def sync_silver_to_postgres():
-        """Task 3: Đồng bộ dữ liệu mới nhất từ Silver Iceberg sang Postgres (Serving Layer)"""
-        logger.info("Executing Sync Task (Silver -> Postgres)...")
-        run_spark_script("/opt/airflow/src/processing/tradestream/sync_silver_to_postgres.py")
+    sync_silver_to_postgres = DockerSparkSubmitOperator(
+        task_id="sync_silver_to_postgres",
+        script_path="/opt/airflow/src/processing/tradestream/sync_silver_to_postgres.py",
+        poll_interval=10
+    )
 
     # Thứ tự thực thi tuần tự trong pipeline
-    ingest_kafka_to_bronze() >> transform_bronze_to_silver() >> sync_silver_to_postgres()
+    ingest_kafka_to_bronze >> transform_bronze_to_silver >> sync_silver_to_postgres
 
 # Khởi tạo DAG
 pipeline = realtime_cold_path_pipeline()
