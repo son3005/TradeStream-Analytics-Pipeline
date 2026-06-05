@@ -44,10 +44,11 @@ class DockerSparkJobTrigger(BaseTrigger):
         status_file (str): Đường dẫn đến tệp lưu trạng thái exit code của Spark job.
         poll_interval (int): Khoảng thời gian (giây) giữa các lần kiểm tra.
     """
-    def __init__(self, container_name: str, status_file: str, poll_interval: int = 10):
+    def __init__(self, container_name: str, status_file: str, log_file: str, poll_interval: int = 10):
         super().__init__()
         self.container_name = container_name
         self.status_file = status_file
+        self.log_file = log_file
         self.poll_interval = poll_interval
 
     def serialize(self) -> tuple[str, Dict[str, Any]]:
@@ -61,6 +62,7 @@ class DockerSparkJobTrigger(BaseTrigger):
             {
                 "container_name": self.container_name,
                 "status_file": self.status_file,
+                "log_file": self.log_file,
                 "poll_interval": self.poll_interval
             }
         )
@@ -78,7 +80,12 @@ class DockerSparkJobTrigger(BaseTrigger):
                 if code == 0:
                     # File status đã tồn tại, đọc exit code
                     exit_code = int(out.strip())
-                    yield TriggerEvent({"status": "complete", "exit_code": exit_code})
+                    yield TriggerEvent({
+                        "status": "complete", 
+                        "exit_code": exit_code,
+                        "status_file": self.status_file,
+                        "log_file": self.log_file
+                    })
                     return
             except Exception as e:
                 logger.error(f"Lỗi khi kiểm tra file status của Spark: {e}")
@@ -153,6 +160,7 @@ class DockerSparkSubmitOperator(BaseOperator):
             "/opt/spark/user-jars/kafka-clients-3.4.1.jar",
             "/opt/spark/user-jars/commons-pool2-2.12.0.jar",
             "/opt/spark/user-jars/postgresql-42.6.0.jar",
+            "/opt/spark/user-jars/openlineage-spark_2.12-1.15.0.jar",
         ])
 
         # 3. Chạy lệnh ngầm bằng docker exec -d
@@ -161,7 +169,7 @@ class DockerSparkSubmitOperator(BaseOperator):
         ] + env_opts + [
             self.spark_master_container,
             "bash", "-c",
-            f"/opt/spark/bin/spark-submit --master spark://spark-master:7077 --jars {JARS} {self.script_path} > {self.log_file} 2>&1; echo $? > {self.status_file}"
+            f"/opt/spark/bin/spark-submit --master spark://spark-master:7077 --total-executor-cores 1 --jars {JARS} {self.script_path} > {self.log_file} 2>&1; echo $? > {self.status_file}"
         ]
 
         self.log.info(f"Đang gửi Spark job chạy ngầm: {' '.join(cmd)}")
@@ -174,6 +182,7 @@ class DockerSparkSubmitOperator(BaseOperator):
             trigger=DockerSparkJobTrigger(
                 container_name=self.spark_master_container,
                 status_file=self.status_file,
+                log_file=self.log_file,
                 poll_interval=self.poll_interval
             ),
             method_name="execute_complete"
@@ -194,16 +203,25 @@ class DockerSparkSubmitOperator(BaseOperator):
 
         if event.get("status") == "complete":
             exit_code = event.get("exit_code")
+            status_file = event.get("status_file")
+            log_file = event.get("log_file")
             self.log.info(f"Spark job đã hoàn thành với mã thoát: {exit_code}")
 
             # Đọc và log 50 dòng cuối cùng từ tệp log của Spark
-            log_cmd = ["docker", "exec", self.spark_master_container, "tail", "-n", "50", self.log_file]
-            log_res = subprocess.run(log_cmd, capture_output=True, text=True)
-            self.log.info(f"Spark Job logs thực tế (50 dòng cuối):\n{log_res.stdout}")
+            if log_file:
+                log_cmd = ["docker", "exec", self.spark_master_container, "tail", "-n", "50", log_file]
+                log_res = subprocess.run(log_cmd, capture_output=True, text=True)
+                self.log.info(f"Spark Job logs thực tế (50 dòng cuối):\n{log_res.stdout}")
 
             # Dọn dẹp các tệp tạm trong container
-            cleanup_cmd = ["docker", "exec", self.spark_master_container, "rm", "-f", self.status_file, self.log_file]
-            subprocess.run(cleanup_cmd)
+            if status_file or log_file:
+                cleanup_files = []
+                if status_file:
+                    cleanup_files.append(status_file)
+                if log_file:
+                    cleanup_files.append(log_file)
+                cleanup_cmd = ["docker", "exec", self.spark_master_container, "rm", "-f"] + cleanup_files
+                subprocess.run(cleanup_cmd)
 
             if exit_code != 0:
                 raise Exception(f"Spark job thất bại với exit code {exit_code}.")

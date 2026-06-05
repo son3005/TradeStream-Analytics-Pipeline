@@ -82,6 +82,7 @@ def realtime_hot_path_streaming_monitor():
             "docker", "exec", "-d", "-u", "root", "-e", "PYTHONPATH=/opt/airflow", "spark-master",
             "/opt/spark/bin/spark-submit",
             "--master", "spark://spark-master:7077",
+            "--total-executor-cores", "1",
             "--jars", JARS,
             script_path
         ]

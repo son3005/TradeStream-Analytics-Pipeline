@@ -84,7 +84,7 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
     *   [x] Cấu hình cơ chế **Asset-Based / Dataset Scheduling** (Lập lịch hướng sự kiện dữ liệu) & sequential medallion orchestration.
     *   [x] Áp dụng **Dynamic Task Mapping** hoặc sequential task flow để điều phối đồng bộ linh hoạt tại runtime.
     *   [x] Xây dựng luồng Lakehouse chuẩn: Ingestion (Producers -> Kafka) -> Bronze Layer (MinIO raw_trades JSON) -> Silver Layer (Iceberg Star Schema Fact/Dim) -> Gold/Serving Layer (TimescaleDB).
-*   [x] **Chuyển đổi Executor**: Chuyển cấu hình Airflow sang **LocalExecutor** (hoặc Sequential với multi-threading hỗ trợ) đ�*   **ML Training Flow (Hướng dẫn thực hiện)**:
+*   [x] **Chuyển đổi Executor**: Chuyển cấu hình Airflow sang **LocalExecutor** (hoặc Sequential với multi-threading hỗ trợ) đ�*   **ML Training Flow (Hướng dẫn thực hiện)**:
     *   [x] **Bước 6.1: Tích hợp MLflow vào Docker Compose**:
         *   Thêm service `mlflow` vào file `docker-compose.yml` (profile `ml`):
             ```yaml
@@ -148,33 +148,6 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
             - Chạy dự đoán xu hướng cho ngày mai.
             - Ghi kết quả vào bảng `daily_predictions` trong TimescaleDB, thiết lập `prediction_date` là ngày tiếp theo để có thể so khớp với dữ liệu thực tế sau đó.
     *   [x] **Bước 6.7: Thiết lập Airflow DAG chạy dự báo hàng ngày**:
-        *   Tạo DAG `ml_prediction_pipeline` chạy hàng ngày lúc 23:00 (sau khi dữ liệu giá của ngày hiện tại đã đồng bộ thành công qua Cold Path).`.
-
-*   **ML Prediction Flow (Hướng dẫn thực hiện)**:
-    *   [ ] **Bước 6.5: Thiết lập bảng `daily_predictions` trong TimescaleDB**:
-        *   *Nhiệm vụ*: Tạo bảng đích để lưu trữ dự báo của mô hình.
-        *   *Schema mẫu (Khởi tạo trên database `tradestream`)*:
-            ```sql
-            CREATE TABLE IF NOT EXISTS daily_predictions (
-                symbol VARCHAR(20) NOT NULL,
-                prediction_date DATE NOT NULL,      -- Ngày được dự báo (ví dụ ngày mai)
-                predicted_direction INT NOT NULL,   -- 1: Tăng, 0: Giảm
-                probability DOUBLE PRECISION,       -- Độ tin cậy (xác suất dự báo)
-                model_version VARCHAR(50),          -- Version mô hình từ MLflow
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (symbol, prediction_date)
-            );
-            -- Chuyển thành Hypertable phân vùng theo ngày
-            SELECT create_hypertable('daily_predictions', 'prediction_date', if_not_exists => TRUE);
-            CREATE INDEX IF NOT EXISTS ix_predictions_symbol_time ON daily_predictions (symbol, prediction_date DESC);
-            ```
-    *   [ ] **Bước 6.6: Phát triển script batch inference `ml/serving/predict.py`**:
-        *   *Nhiệm vụ*: Tải mô hình `Production` từ MLflow Server (`mlflow.pyfunc.load_model("models:/price_direction_model/Production")`).
-        *   *Luồng xử lý*:
-            - Lấy đặc trưng ngày hiện tại (`fetch_date` hôm nay) từ Trino.
-            - Chạy dự đoán xu hướng cho ngày mai.
-            - Ghi kết quả vào bảng `daily_predictions` trong TimescaleDB, thiết lập `prediction_date` là ngày tiếp theo để có thể so khớp với dữ liệu thực tế sau đó.
-    *   [ ] **Bước 6.7: Thiết lập Airflow DAG chạy dự báo hàng ngày**:
         *   Tạo DAG `ml_prediction_pipeline` chạy hàng ngày lúc 23:00 (sau khi dữ liệu giá của ngày hiện tại đã đồng bộ thành công qua Cold Path).
 
 ---

@@ -70,13 +70,14 @@ def get_spark_session(
     minio_endpoint: str = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
     spark_master: str = os.environ.get("SPARK_MASTER", "spark://spark-master:7077")
     
-    # Combined package list containing all necessary packages (Kafka, Iceberg, Postgres, AWS S3)
+    # Combined package list containing all necessary packages (Kafka, Iceberg, Postgres, AWS S3, OpenLineage)
     default_packages: str = (
         "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,"
         "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,"
         "org.postgresql:postgresql:42.6.0,"
         "org.apache.hadoop:hadoop-aws:3.3.4,"
-        "com.amazonaws:aws-java-sdk-bundle:1.12.262"
+        "com.amazonaws:aws-java-sdk-bundle:1.12.262,"
+        "io.openlineage:openlineage-spark_2.12:1.15.0"
     )
     
     spark_packages: str = custom_packages or os.environ.get("SPARK_PACKAGES") or default_packages
@@ -97,6 +98,11 @@ def get_spark_session(
         .config("spark.hadoop.fs.s3a.secret.key", minio_pass)
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+        # Configure OpenLineage Agent
+        .config("spark.extraListeners", "io.openlineage.spark.agent.OpenLineageSparkListener")
+        .config("spark.openlineage.transport.type", "http")
+        .config("spark.openlineage.transport.url", "http://marquez:5000/api/v1")
+        .config("spark.openlineage.namespace", "tradestream")
     )
 
     # 4. Conditionally configure Iceberg Catalog

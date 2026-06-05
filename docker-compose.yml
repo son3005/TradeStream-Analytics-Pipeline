@@ -349,9 +349,11 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
+      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy apache-airflow-providers-openlineage great-expectations"
 
-      # Cài đặt thêm thư viện Python cho Airflow khi khởi động
-      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy"
+      # Cấu hình OpenLineage Integration cho Airflow
+      OPENLINEAGE_URL: http://marquez:5000
+      OPENLINEAGE_NAMESPACE: tradestream
 
       # Secret keys (giá trị thật nằm trong .env, KHÔNG hardcode ở đây)
       AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
@@ -406,7 +408,11 @@ services:
       # Scheduler cần biết API Server ở đâu để giao việc cho Worker
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
 
-      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy"
+      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy apache-airflow-providers-openlineage great-expectations"
+
+      # Cấu hình OpenLineage Integration cho Airflow
+      OPENLINEAGE_URL: http://marquez:5000
+      OPENLINEAGE_NAMESPACE: tradestream
 
       # Biến môi trường cho DAGs (đọc từ .env)
       YAHOO_FINANCE_URL: ${YAHOO_FINANCE_URL}
@@ -445,7 +451,11 @@ services:
       AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
-      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy"
+      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy apache-airflow-providers-openlineage great-expectations"
+
+      # Cấu hình OpenLineage Integration cho Airflow
+      OPENLINEAGE_URL: http://marquez:5000
+      OPENLINEAGE_NAMESPACE: tradestream
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
@@ -484,7 +494,11 @@ services:
       AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
-      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy"
+      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy apache-airflow-providers-openlineage great-expectations"
+
+      # Cấu hình OpenLineage Integration cho Airflow
+      OPENLINEAGE_URL: http://marquez:5000
+      OPENLINEAGE_NAMESPACE: tradestream
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
@@ -518,6 +532,52 @@ services:
       - mlflow_data:/mlflow
     networks:
       - tradestream-net
+
+  marquez:
+    image: marquezproject/marquez:latest
+    container_name: marquez
+    profiles: [ "orchestration", "ml" ]
+    ports:
+      - "8090:5000"
+    environment:
+      - MARQUEZ_CONFIG=/usr/src/app/marquez.yml
+      - POSTGRES_HOST=airflow-metadata
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=marquez
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+    volumes:
+      - ./infrastructure/marquez/marquez.yml:/usr/src/app/marquez.yml
+    depends_on:
+      airflow-metadata:
+        condition: service_healthy
+    networks:
+      - tradestream-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  marquez-web:
+    image: marquezproject/marquez-web:latest
+    container_name: marquez-web
+    profiles: [ "orchestration", "ml" ]
+    ports:
+      - "8091:3000"
+    environment:
+      - MARQUEZ_HOST=marquez
+      - MARQUEZ_PORT=5000
+      - WEB_PORT=3000
+    depends_on:
+      - marquez
+    networks:
+      - tradestream-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
 
 networks:
   tradestream-net:
