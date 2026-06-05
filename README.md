@@ -53,7 +53,15 @@ Dự án tích hợp các công nghệ xử lý dữ liệu lớn (Big Data) và
     4.  **Serving**: Lưu trữ kết quả dự báo vào bảng `daily_predictions` (TimescaleDB hypertable).
     5.  **Visualization**: Hiển thị biểu đồ đối chiếu giá dự báo với giá thực tế (Forecast vs Actual) trực tiếp trên Grafana Dashboard để giám sát chất lượng mô hình.
 
-### 4. Lưu trữ & Legacy (Phase 1)
+### 4. Data Quality & Lineage (Kiểm định chất lượng & Nguồn gốc dữ liệu - Phase 8 - Đã triển khai)
+*   **Mục tiêu**: Xây dựng chốt chặn tự động đảm bảo chất lượng dữ liệu sạch khi đưa vào Serving DB, và tự động vẽ sơ đồ luồng dịch chuyển dữ liệu (Data Lineage) để giám sát.
+*   **Cơ chế hoạt động**:
+    1.  **Data Quality Gate (Great Expectations)**: Airflow DAG `tradestream_data_quality_pipeline` chạy định kỳ sử dụng helper class [data_quality_helper.py](file:///E:/DuAn/TradeStream%20Analytics%20Pipeline/src/utils/data_quality_helper.py) (EphemeralDataContext) để kiểm định 5 tiêu chí: symbol không NULL, close price không NULL > 99%, close/open price > 0, volume >= 0. Nếu dữ liệu bẩn lọt qua, task sẽ dừng pipeline, ném lỗi và gửi thông báo khẩn qua Telegram.
+    2.  **Sơ đồ Lineage (OpenLineage & Marquez)**:
+        - Sử dụng plugin OpenLineage của Airflow và Spark (`io.openlineage.spark.agent.OpenLineageSparkListener`) để tự động thu thập metadata và sơ đồ phụ thuộc của từng dataset khi job chạy.
+        - Mọi sự kiện START/COMPLETE/FAIL được gửi về **Marquez API** (cổng 8090) và hiển thị trực quan sơ đồ Lineage trên **Marquez Web UI** (cổng 8091).
+
+### 5. Lưu trữ & Legacy (Phase 1)
 *   **`yahoo_batch_producer.py`**: Producer cũ ở Phase 1 để kéo dữ liệu nến ngày thô trực tiếp từ Yahoo Finance API (với tham số `range=1d&interval=1d`) và đẩy vào Kafka topic `raw_daily_prices`.
 *   **Trạng thái**: Đã được lưu trữ trong thư mục `tools/` và thay thế hoàn toàn bằng luồng Ingest Ticks thô tự động từ các active producers thời gian thực ở trên. Bảng Iceberg Silver giờ đây tự tổng hợp OHLCV trực tiếp từ ticks thay vì nạp nến 1 ngày thô.
 
@@ -235,10 +243,10 @@ Sau khi khởi chạy hệ thống, bạn có thể truy cập các địa chỉ
 *   **Kafka UI (Broker Monitor)**: [http://localhost:8080](http://localhost:8080)
 *   **MinIO Console (Object Storage)**: [http://localhost:9001](http://localhost:9001) (Tài khoản: `admin` / `minioadminpassword`)
 *   **Grafana Dashboard (Visualization)**: [http://localhost:3000](http://localhost:3000) (Tài khoản: `admin` / `tradestream`)
+*   **Marquez Web UI (Data Lineage)**: [http://localhost:8091](http://localhost:8091) (API backend chạy trên cổng `8090`)
+*   **MLflow Server (MLOps Dashboard)**: [http://localhost:5000](http://localhost:5000)
 
 ---
 
 ## 📈 Lộ trình Phát triển tiếp theo (Next Steps)
-1.  **Phase 6 (Machine Learning & MLOps)**: Triển khai Feature Engineering và huấn luyện mô hình dự báo xu hướng (XGBoost/LightGBM) được theo dõi qua MLflow.
-2.  **Phase 7 (Grafana Dashboards)**: Tích hợp Datasource Trino để so sánh phân tích dữ liệu dài hạn trong Iceberg và TimescaleDB trên cùng biểu đồ.
-3.  **Phase 8 (Data Quality Gates)**: Thêm các chốt chặn kiểm tra chất lượng dữ liệu bằng Great Expectations trước khi merge dữ liệu vào Silver.
+1.  **Phase 9 (CI/CD & Automated Testing)**: Thiết lập unit tests bằng `pytest` và `chispa` cho logic Spark, tích hợp linter Ruff/Black và tạo luồng CI/CD build Docker Image qua GitHub Actions.
