@@ -1,7 +1,7 @@
 # =====================================================================
 # FILE: init_project.ps1
 # MUC DICH: Script khoi tao du an TradeStream Analytics Pipeline tren Windows.
-#           Ho tro tu dong don dep du lieu cu, khoi dong Docker va tao Star Schema.
+#           Ho tro tu dong don dep du lieu cu, khoi dong Docker, thiet lap venv va tao Star Schema.
 # =====================================================================
 
 param (
@@ -17,23 +17,24 @@ Write-Host ">>> TRADESTREAM ANALYTICS PIPELINE - KICH BAN KHOI TAO HE THONG <<<"
 Write-Host "=====================================================================" -ForegroundColor Cyan
 
 # 1. Don dep du lieu cu neu nguoi dung yeu cau
+$profiles = "--profile core --profile processing --profile storage --profile lakehouse --profile orchestration --profile dashboard --profile ml"
 if ($Wipe) {
     Write-Host "[!] Dang dung cac container va XOA SACH du lieu (Docker Volumes)..." -ForegroundColor Red
-    docker compose --profile core --profile processing --profile storage --profile query --profile orchestration --profile dashboard down -v
+    Invoke-Expression "docker compose $profiles down -v"
     Write-Host "[OK] Da don dep xong du lieu cu." -ForegroundColor Green
 } else {
     Write-Host "[*] Dang dung cac container dang chay (giu lai du lieu)..." -ForegroundColor Yellow
-    docker compose --profile core --profile processing --profile storage --profile query --profile orchestration --profile dashboard down
+    Invoke-Expression "docker compose $profiles down"
 }
 
 # 2. Khoi dong toan bo cum dich vu Docker
 Write-Host "[*] Dang khoi dong toan bo dich vu Docker..." -ForegroundColor Yellow
-docker compose --profile core --profile processing --profile storage --profile query --profile orchestration --profile dashboard up -d
+Invoke-Expression "docker compose $profiles up -d"
 
 # 3. Doi cac container chinh dat trang thai Healthy
 Write-Host "[*] Dang cho cac dich vu khoi dong va san sang hoat dong..." -ForegroundColor Yellow
 
-$services = @("timescaledb", "minio", "kafka")
+$services = @("timescaledb", "minio", "kafka", "spark-master")
 foreach ($service in $services) {
     Write-Host "[*] Dang kiem tra trang thai dich vu: $service..." -ForegroundColor Gray
     
@@ -81,6 +82,21 @@ if ($LASTEXITCODE -eq 0) {
     exit 1
 }
 
+# 5. Khoi tao moi truong Python local va cai dat dependencies
+Write-Host "[*] Dang kiem tra va thiet lap moi truong Python local (venv)..." -ForegroundColor Yellow
+if (-not (Test-Path "venv")) {
+    Write-Host "[*] Khong tim thay venv. Dang tao moi truong ao Python..." -ForegroundColor Gray
+    python -m venv venv
+}
+Write-Host "[*] Dang cai dat/cap nhat thu vien tu requirements.txt..." -ForegroundColor Gray
+& .env\Scripts\python.exe -m pip install --upgrade pip
+& .env\Scripts\python.exe -m pip install -r requirements.txt
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "[OK] Da thiet lap venv va cai dat dependencies thanh cong!" -ForegroundColor Green
+} else {
+    Write-Host "[WARNING] Cai dat dependencies xay ra loi. Vui long tu chay 'pip install -r requirements.txt' sau." -ForegroundColor Yellow
+}
+
 Write-Host "=====================================================================" -ForegroundColor Cyan
 Write-Host ">>> HE THONG TRADESTREAM DA SAN SANG! <<<" -ForegroundColor Green
 Write-Host "=====================================================================" -ForegroundColor Cyan
@@ -88,4 +104,11 @@ Write-Host "-> Airflow Webserver: http://localhost:8085 (admin / airflow)" -Fore
 Write-Host "-> Kafka UI:         http://localhost:8080" -ForegroundColor White
 Write-Host "-> MinIO Console:    http://localhost:9001 (admin / minioadminpassword)" -ForegroundColor White
 Write-Host "-> Grafana Dashboard:http://localhost:3000 (admin / tradestream)" -ForegroundColor White
+Write-Host "-> MLflow Server:    http://localhost:5000" -ForegroundColor White
+Write-Host "-> Marquez Web UI:   http://localhost:8091" -ForegroundColor White
+Write-Host "=====================================================================" -ForegroundColor Cyan
+Write-Host ">>> DE KIEM THU (TESTING):" -ForegroundColor Yellow
+Write-Host "1. Kich hoat venv:   .\\venv\\Scripts\\activate" -ForegroundColor White
+Write-Host "2. Chay Unit Tests:  pytest tests/unit" -ForegroundColor White
+Write-Host "3. Quet loi Ruff:    ruff check ." -ForegroundColor White
 Write-Host "=====================================================================" -ForegroundColor Cyan

@@ -2,7 +2,7 @@
 # =====================================================================
 # FILE: init_project.sh
 # MỤC ĐÍCH: Script khởi tạo dự án TradeStream Analytics Pipeline trên Linux/macOS/Git Bash.
-#           Hỗ trợ tự động dọn dẹp dữ liệu cũ, khởi động Docker và tạo Star Schema.
+#           Hỗ trợ tự động dọn dẹp dữ liệu cũ, khởi động Docker, thiết lập venv và tạo Star Schema.
 # =====================================================================
 
 WIPE=false
@@ -28,24 +28,27 @@ echo -e "${CYAN}================================================================
 echo -e "${CYAN}🚀 TRADESTREAM ANALYTICS PIPELINE - KỊCH BẢN KHỞI TẠO HỆ THỐNG${NC}"
 echo -e "${CYAN}=====================================================================${NC}"
 
+# Profiles Docker cần chạy
+PROFILES="--profile core --profile processing --profile storage --profile lakehouse --profile orchestration --profile dashboard --profile ml"
+
 # 1. Dọn dẹp dữ liệu cũ nếu yêu cầu
 if [ "$WIPE" = true ]; then
     echo -e "${RED}[!] Đang dừng các container và XÓA SẠCH dữ liệu (Docker Volumes)...${NC}"
-    docker compose --profile core --profile processing --profile storage --profile query --profile orchestration --profile dashboard down -v
+    docker compose $PROFILES down -v
     echo -e "${GREEN}[✓] Đã dọn dẹp xong dữ liệu cũ.${NC}"
 else
     echo -e "${YELLOW}[*] Đang dừng các container đang chạy (giữ lại dữ liệu)...${NC}"
-    docker compose --profile core --profile processing --profile storage --profile query --profile orchestration --profile dashboard down
+    docker compose $PROFILES down
 fi
 
 # 2. Khởi động toàn bộ cụm dịch vụ Docker
 echo -e "${YELLOW}[*] Đang khởi động toàn bộ dịch vụ Docker...${NC}"
-docker compose --profile core --profile processing --profile storage --profile query --profile orchestration --profile dashboard up -d
+docker compose $PROFILES up -d
 
 # 3. Đợi các container chính đạt trạng thái Healthy
 echo -e "${YELLOW}[*] Đang chờ các dịch vụ khởi động và sẵn sàng hoạt động...${NC}"
 
-services=("timescaledb" "minio" "kafka")
+services=("timescaledb" "minio" "kafka" "spark-master")
 for service in "${services[@]}"; do
     echo -e "${NC}[*] Đang kiểm tra trạng thái dịch vụ: $service...${NC}"
     
@@ -92,6 +95,21 @@ else
     exit 1
 fi
 
+# 5. Khởi tạo môi trường Python local và cài đặt dependencies
+echo -e "${YELLOW}[*] Đang kiểm tra và thiết lập môi trường Python local (venv)...${NC}"
+if [ ! -d "venv" ]; then
+    echo -e "${NC}[*] Không tìm thấy venv. Đang tạo môi trường ảo Python...${NC}"
+    python3 -m venv venv
+fi
+echo -e "${NC}[*] Đang cài đặt/cập nhật thư viện từ requirements.txt...${NC}"
+./venv/bin/python -m pip install --upgrade pip
+./venv/bin/python -m pip install -r requirements.txt
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}[✓] Đã thiết lập venv và cài đặt dependencies thành công!${NC}"
+else
+    echo -e "${YELLOW}[!] Cài đặt dependencies xảy ra lỗi. Vui lòng tự chạy 'pip install -r requirements.txt' sau.${NC}"
+fi
+
 echo -e "${CYAN}=====================================================================${NC}"
 echo -e "${GREEN}🎉 HỆ THỐNG TRADESTREAM ĐÃ SẴN SÀNG!${NC}"
 echo -e "${CYAN}=====================================================================${NC}"
@@ -99,4 +117,11 @@ echo -e "👉 Airflow Webserver: http://localhost:8085 (admin / airflow)"
 echo -e "👉 Kafka UI:         http://localhost:8080"
 echo -e "👉 MinIO Console:    http://localhost:9001 (admin / minioadminpassword)"
 echo -e "👉 Grafana Dashboard:http://localhost:3000 (admin / tradestream)"
+echo -e "👉 MLflow Server:    http://localhost:5000"
+echo -e "👉 Marquez Web UI:   http://localhost:8091"
+echo -e "${CYAN}=====================================================================${NC}"
+echo -e "${YELLOW}👉 ĐỂ KIỂM THỬ (TESTING):${NC}"
+echo -e "1. Kích hoạt venv:   source venv/bin/activate"
+echo -e "2. Chạy Unit Tests:  pytest tests/unit"
+echo -e "3. Quét lỗi Ruff:    ruff check ."
 echo -e "${CYAN}=====================================================================${NC}"

@@ -219,21 +219,16 @@ Kịch bản này sẽ tự động dừng container cũ, khởi chạy các d�
     ./tools/init_project.sh --wipe
     ```
 
-### Bước 2: Thiết lập Môi trường Python Local
-Khởi tạo và kích hoạt virtual environment:
+### Bước 2: Kích hoạt Môi trường Python Local
+*(Lưu ý: Kịch bản khởi tạo ở **Bước 1** đã tự động tạo thư mục `venv` và cài đặt đầy đủ thư viện từ `requirements.txt` cho bạn).*
 
+Bạn chỉ cần kích hoạt môi trường ảo (virtual environment) trên Terminal để chuẩn bị chạy script hoặc tests:
 ```bash
-python -m venv venv
-# On Windows
-venv\Scripts\activate
-# On Linux/macOS
+# Trên Windows (PowerShell)
+.\venv\Scripts\activate
+
+# Trên Linux / macOS / Git Bash
 source venv/bin/activate
-```
-
-Cài đặt các gói thư viện phụ thuộc:
-
-```bash
-pip install -r requirements.txt
 ```
 
 ### Bước 3: Khởi động các Producer Stream Daemons
