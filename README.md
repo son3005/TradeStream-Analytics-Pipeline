@@ -16,6 +16,23 @@ Mục tiêu cốt lõi của dự án TradeStream Analytics Pipeline là xây d�
 
 ---
 
+## 💻 Yêu cầu Hệ thống & Phần cứng (System Requirements)
+
+Vì dự án chạy cụm ứng dụng dữ liệu lớn (Zookeeper, Kafka, Spark, Airflow, Trino, Marquez, MLflow, TimescaleDB, Grafana) dưới dạng Docker Containers, cấu hình đề xuất dưới đây giúp hệ thống vận hành mượt mà:
+
+### 1. Cấu hình Phần cứng
+- **RAM**: Tối thiểu **12 GB** (Khuyến nghị **16 GB** hoặc cao hơn để chạy đầy đủ tất cả các dịch vụ cùng lúc mà không bị nghẽn).
+- **CPU**: Tối thiểu **4 Cores / 8 Threads** (Khuyến nghị các dòng CPU thế hệ mới như Intel Core i5/i7 Gen 10+, AMD Ryzen 5+).
+- **Ổ cứng**: Còn trống tối thiểu **15 GB** (Bắt buộc sử dụng **SSD** để đảm bảo tốc độ đọc/ghi cao của Kafka, Spark và các Database).
+
+### 2. Yêu cầu Phần mềm
+- **Hệ điều hành**: Windows 10/11 (khuyến nghị kích hoạt WSL 2), Ubuntu/Linux hoặc macOS.
+- **Docker & Docker Compose**: Hỗ trợ Docker Compose V2.
+- **Python**: Phiên bản **3.10.x** (để chạy các script Producer và chạy test suite cục bộ).
+- **Java**: **JDK 11** (bắt buộc cài đặt trên máy host nếu chạy PySpark unit tests cục bộ).
+
+---
+
 ## 🏗️ Kiến trúc Hệ thống (System Architecture)
 
 Dự án tích hợp các công nghệ xử lý dữ liệu lớn (Big Data) và quản trị dữ liệu hồ chứa (Lakehouse Storage) để tách biệt luồng xử lý:
