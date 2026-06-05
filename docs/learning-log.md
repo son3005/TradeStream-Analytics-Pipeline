@@ -786,4 +786,19 @@ Trong các hệ thống dữ liệu doanh nghiệp lớn, việc đồng bộ d�
     2. Chạy dự báo thử cả hai mô hình trên cùng tập kiểm thử (Test Set) của tuần hiện tại.
     3. Tính toán và so sánh Accuracy. Chỉ thực hiện cập nhật chuyển đổi stage `Production` cho Challenger mới nếu hiệu năng của nó vượt trội hơn Champion cũ. Ngược lại, giữ nguyên Champion ở Production để đảm bảo độ tin cậy của luồng dự báo.
 
+---
 
+### Ngày 16 (Hoàn thành Phase 8: Data Quality Gate, Data Lineage & Sửa lỗi ClassNotFound cho Spark OpenLineage)
+- **Kiểm định chất lượng dữ liệu (Data Quality Gate) bằng Great Expectations**:
+  - Tích hợp lớp `DataQualityChecker` sử dụng `EphemeralDataContext` của Great Expectations 1.x. Việc kiểm định được thực hiện trực tiếp trên Pandas DataFrame trong bộ nhớ, giúp quy trình linh hoạt và không phụ thuộc vào các file cấu hình tĩnh cồng kềnh.
+  - Thiết lập bộ quy chuẩn kiểm định gồm 5 quy tắc nghiêm ngặt: `symbol` không NULL, `close_price` tỷ lệ NULL < 1%, `close_price` và `open_price` bắt buộc phải là số dương (`> 0`), và `volume` phải lớn hơn hoặc bằng 0.
+  - Chốt chặn chất lượng dữ liệu: Khi phát hiện bản ghi lỗi (ví dụ `close_price = -100.0` khi test), task `run_data_quality_check` sẽ ném ngoại lệ `ValueError`, đánh dấu trạng thái thất bại (`failed`) lập tức để dừng pipeline và kích hoạt cảnh báo Telegram Bot kèm thông tin chi tiết lỗi.
+- **Tự động hóa sơ đồ dịch chuyển dữ liệu (Data Lineage) qua OpenLineage & Marquez**:
+  - Triển khai thành công dịch vụ Marquez API (cổng `8090`) và giao diện người dùng Marquez Web (cổng `8091`) để giám sát Lineage.
+  - Sử dụng định nghĩa `Asset` (hoặc tương thích ngược với `Dataset` của Airflow 2.x) trong Airflow 3.x với định dạng URI chuẩn (`postgres://host:port/database/schema/table`) để định cấu hình các `inlets` và `outlets` cho các task. Airflow tự động gửi các sự kiện `START`/`COMPLETE`/`FAIL` về Marquez để vẽ đồ thị phụ thuộc dữ liệu.
+- **Giải quyết sự cố ClassNotFoundException của Spark OpenLineage Listener**:
+  - **Thách thức**: Việc đăng ký `io.openlineage.spark.agent.OpenLineageSparkListener` thông qua thuộc tính `spark.extraListeners` làm Spark cố gắng nạp listener này ngay khi khởi động JVM. Nếu chỉ khai báo gói qua `spark.jars.packages` ở PySpark Session Builder, JVM sẽ ném lỗi `ClassNotFoundException` do tiến trình tải Maven chưa kịp hoàn tất.
+  - **Giải pháp**: Tải sẵn file jar của agent (`openlineage-spark_2.12-1.15.0.jar`) bỏ vào thư mục jars của Spark và mount trực tiếp vào container. Cập nhật `DockerSparkSubmitOperator` để khai báo trực tiếp tệp jar này trong tham số `--jars` của lệnh `spark-submit`, đảm bảo listener được nạp thành công vào classpath ngay lúc khởi chạy JVM.
+- **Khắc phục lỗi rò rỉ tệp tin rác trong container Spark master**:
+  - Do operator bị deserialize lại sau khi resume từ trạng thái trì hoãn (`deferred`), các biến thành viên `self.status_file` and `self.log_file` bị rỗng. Điều này khiến hệ thống không thể đọc log thực tế và không dọn dẹp được các tệp tạm trên container.
+  - *Giải pháp*: Đóng gói các đường dẫn tệp tạm này vào đối tượng `DockerSparkJobTrigger` và truyền ngược lại thông qua sự kiện `TriggerEvent` để hàm callback `execute_complete` có thể đọc log và xóa tệp tạm chính xác 100%.

@@ -15,9 +15,9 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
 *   **Luồng HOT PATH (Real-Time Spark Streaming & UI)**:
     *   **Phase 7**: Grafana Dashboard & Real-Time Hot Path 📊 `[HOÀN THÀNH]`
 *   **Luồng ML PATH (MLOps & Predictions)**:
-    *   **Phase 6**: Machine Learning Pipeline & MLOps ⏳ `[ĐANG THỰC HIỆN]`
+    *   **Phase 6**: Machine Learning Pipeline & MLOps 🩸 `[HOÀN THÀNH]`
 *   **Vận hành & Chất lượng (Production Hardening)**:
-    *   **Phase 8**: Data Quality, Lineage & Alerting ⏳ `[CHƯA THỰC HIỆN]`
+    *   **Phase 8**: Data Quality, Lineage & Alerting 🩸 `[HOÀN THÀNH]`
     *   **Phase 9**: CI/CD & Automated Testing ⏳ `[CHƯA THỰC HIỆN]`
     *   **Phase 10**: [ĐÃ BỎ QUA] Infrastructure as Code (IaC) & Kubernetes ❌
 
@@ -250,12 +250,12 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
     *   [x] **Bước 7.7: Cấu hình Alerting trên Grafana**:
         *   Thiết lập cảnh báo tự động gửi qua Telegram/Email nếu phát hiện model dự báo sai quá 3 ngày liên tiếp hoặc dữ liệu Hot Path bị trễ quá 2 phút không có bản ghi mới.
 
-### Phase 8: Data Quality, Lineage & Alerting ⏳ [CHƯA THỰC HIỆN]
-*   [ ] Tích hợp **Great Expectations** vào pipeline của Airflow để kiểm định 6 chiều kích thước của chất lượng dữ liệu (Data Quality).
-*   [ ] **Data Quality Gates**: Thiết lập Great Expectations như một chốt chặn bắt buộc trước khi load dữ liệu vào Silver/Gold. Nếu check fail, pipeline lập tức dừng lại và roll back dữ liệu.
-*   [ ] Thiết lập cơ chế gửi cảnh báo tự động qua **Telegram/Slack Bot** khi pipeline bị lỗi hoặc phát hiện dữ liệu bẩn.
-*   [ ] Hardening hệ thống: Mã hóa credentials bằng Docker Secrets/Environment Variables bảo mật.
-*   [ ] **Nâng cấp Enterprise (Chưa làm)**: Tích hợp **OpenLineage** và **Marquez** để tự động vẽ bản đồ nguồn gốc dịch chuyển dữ liệu (Data Lineage) giữa các task trong Spark và Airflow, hỗ trợ kiểm soát dữ liệu.
+### Phase 8: Data Quality, Lineage & Alerting 🩸 [HOÀN THÀNH 🎉]
+*   [x] Tích hợp **Great Expectations** vào pipeline của Airflow để kiểm định 6 chiều kích thước của chất lượng dữ liệu (Data Quality).
+*   [x] **Data Quality Gates**: Thiết lập Great Expectations như một chốt chặn bắt buộc trước khi load dữ liệu vào Silver/Gold. Nếu check fail, pipeline lập tức dừng lại, không nạp dữ liệu bẩn và báo lỗi.
+*   [x] Thiết lập cơ chế gửi cảnh báo tự động qua **Telegram Bot** khi pipeline bị lỗi hoặc phát hiện dữ liệu bẩn.
+*   [x] Hardening hệ thống: Bảo mật hóa các thông tin nhạy cảm (Telegram token, DB Connection) qua file cấu hình `.env` cho toàn bộ các service Docker Compose.
+*   [x] **Nâng cấp Enterprise**: Tích hợp **OpenLineage** và **Marquez** để tự động vẽ bản đồ nguồn gốc dịch chuyển dữ liệu (Data Lineage) giữa các task trong Spark và Airflow, hỗ trợ kiểm soát dữ liệu.
 
 ### Phase 9: CI/CD & Automated Testing ⏳ [CHƯA THỰC HIỆN]
 *   [ ] Viết **Unit Tests** cho các hàm tính toán của PySpark sử dụng thư viện `pytest` và `chispa` (kiểm tra schema, logic SMA/EMA).
