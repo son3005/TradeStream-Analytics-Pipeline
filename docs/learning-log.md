@@ -772,3 +772,18 @@ Trong các hệ thống dữ liệu doanh nghiệp lớn, việc đồng bộ d�
   - **Sự cố 2 (Trình phân tích URL của Telegram)**: Telegram Client Parser không nhận diện `localhost` là một tên miền hợp lệ do thiếu đuôi TLD (dấu chấm `.`), vì thế thẻ `<a href="http://localhost:8085/...">` bị render thành text thường.
     - *Giải pháp*: Ánh xạ lại hostname `localhost` sang địa chỉ IP local loopback **`127.0.0.1`** (tức `http://127.0.0.1:8085/...`). Do IP chứa các dấu chấm phân tách, Telegram nhận diện chuẩn xác 100% làm đường link màu xanh nhấp được dẫn thẳng tới log của Airflow UI.
 
+---
+
+### Ngày 15 (Chuẩn hóa Coding Conventions và triển khai cơ chế Champion vs Challenger cho MLOps Pipeline)
+- **Chuẩn hóa Coding Conventions**:
+  - Thực hiện bổ sung **Type Hints** đầy đủ cho các tham số và giá trị trả về của các hàm trong toàn bộ module ML của dự án bao gồm: [build_features.py](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/ml/features/build_features.py), [train.py](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/ml/training/train.py), và [predict.py](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/ml/serving/predict.py).
+  - Viết lại **Google-Style Docstrings bằng Tiếng Việt 100%** chuẩn 4 mục (Description, Args, Returns, Raises) cho toàn bộ các hàm và Airflow DAG Tasks để đồng bộ với tài liệu hướng dẫn phát triển của dự án.
+  - Loại bỏ hoàn toàn lệnh `print()` thô sơ và thay thế bằng thư viện `logging` chuẩn của Python để ghi nhận nhật ký vận hành có cấu trúc rõ ràng.
+- **Triển khai cơ chế Champion vs Challenger trong MLOps**:
+  - **Thách thức**: Quy trình cũ tự động chuyển phiên bản mô hình mới huấn luyện sang trạng thái `Production` một cách "ngây thơ" mà không so khớp hiệu năng, có khả năng gây suy giảm độ chính xác hệ thống khi gặp dữ liệu thị trường biến động dị thường.
+  - **Giải pháp**: Tích hợp cơ chế tự động đánh giá chéo trực tiếp trong [train.py](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/ml/training/train.py):
+    1. Khi huấn luyện xong mô hình Challenger mới, script sẽ tự động nạp mô hình Champion hiện tại đang ở stage `Production` từ MLflow Model Registry về.
+    2. Chạy dự báo thử cả hai mô hình trên cùng tập kiểm thử (Test Set) của tuần hiện tại.
+    3. Tính toán và so sánh Accuracy. Chỉ thực hiện cập nhật chuyển đổi stage `Production` cho Challenger mới nếu hiệu năng của nó vượt trội hơn Champion cũ. Ngược lại, giữ nguyên Champion ở Production để đảm bảo độ tin cậy của luồng dự báo.
+
+

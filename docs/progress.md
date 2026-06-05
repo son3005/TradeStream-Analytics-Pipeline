@@ -84,24 +84,8 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
     *   [x] Cấu hình cơ chế **Asset-Based / Dataset Scheduling** (Lập lịch hướng sự kiện dữ liệu) & sequential medallion orchestration.
     *   [x] Áp dụng **Dynamic Task Mapping** hoặc sequential task flow để điều phối đồng bộ linh hoạt tại runtime.
     *   [x] Xây dựng luồng Lakehouse chuẩn: Ingestion (Producers -> Kafka) -> Bronze Layer (MinIO raw_trades JSON) -> Silver Layer (Iceberg Star Schema Fact/Dim) -> Gold/Serving Layer (TimescaleDB).
-*   [x] **Chuyển đổi Executor**: Chuyển cấu hình Airflow sang **LocalExecutor** (hoặc Sequential với multi-threading hỗ trợ) để chạy các task ổn định.
-*   [x] **Lập lịch Micro-batch**: Điều chỉnh DAG chạy mỗi 5 phút một lần (`*/5 * * * *`) để xử lý thời gian thực Cold Path.
-*   [x] **Tự động hóa bảo trì**: Thiết kế các job bảo trì Iceberg tables (Compaction, Expire Snapshots) chạy định kỳ để dọn dẹp các tệp nhỏ sinh ra do micro-batch.
-*   [x] **Tuning & Management**: Chuyển toàn bộ cấu hình nhạy cảm và token vào file [.env](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/.env) và đồng bộ hóa qua môi trường của các dịch vụ Docker.
-*   [x] **Tuning & Management**: Tích hợp cơ chế tự động chạy lại (Retries) và cơ chế báo lỗi tự động qua Telegram Alert (đường link log dạng HTML click được trực tiếp từ host).
-*   [x] **Nâng cấp Enterprise**: Thay thế việc đồng bộ cứng Spark Job bằng **Deferrable Operators** (Triggerer không đồng bộ) để giải phóng tài nguyên worker của Airflow trong lúc chờ Spark chạy xong.
-### Phase 6 [ML PATH]: Machine Learning Pipeline & MLOps ⏳ [ĐANG THỰC HIỆN ⏳]
-
-*   **Tổng quan luồng máy học (ML Path)**:
-    ```
-    [Apache Iceberg] ➔ [Trino Query Engine] ➔ [build_features.py (Pandas)] ➔ [train.py (XGBoost)] ➔ [MLflow Server (Cổng 5000)]
-                                                   │
-                                                   ▼
-                                         [predict.py (Inference)] ➔ [TimescaleDB (daily_predictions)]
-    ```
-
-*   **ML Training Flow (Hướng dẫn thực hiện)**:
-    *   [ ] **Bước 6.1: Tích hợp MLflow vào Docker Compose**:
+*   [x] **Chuyển đổi Executor**: Chuyển cấu hình Airflow sang **LocalExecutor** (hoặc Sequential với multi-threading hỗ trợ) đ�*   **ML Training Flow (Hướng dẫn thực hiện)**:
+    *   [x] **Bước 6.1: Tích hợp MLflow vào Docker Compose**:
         *   Thêm service `mlflow` vào file `docker-compose.yml` (profile `ml`):
             ```yaml
             mlflow:
@@ -122,22 +106,49 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
                 - tradestream-net
             ```
         *   Thêm volume `mlflow_data` và cập nhật `_PIP_ADDITIONAL_REQUIREMENTS` trong container Airflow để cài thêm: `mlflow trino xgboost scikit-learn pandas numpy sqlalchemy psycopg2-binary`.
-    *   [ ] **Bước 6.2: Xây dựng module trích xuất đặc trưng `ml/features/build_features.py`**:
+    *   [x] **Bước 6.2: Xây dựng module trích xuất đặc trưng `ml/features/build_features.py`**:
         *   *Nhiệm vụ*: Kết nối Trino client (`trino.dbapi.connect`) tới `http://trino:8080` (hoặc `localhost:8089` từ máy local).
         *   *Tính toán đặc trưng*:
             - Đọc dữ liệu lịch sử từ bảng `lakehouse.trading.fact_daily_prices`.
             - Dùng Pandas tính chỉ báo kỹ thuật: SMA 5, SMA 10, SMA 20 của giá đóng cửa.
             - Tính lag features: `close_lag_1` (giá đóng cửa ngày hôm trước), `volume_lag_1`, tỷ suất sinh lời trễ `return_lag_1` (daily_return của ngày hôm trước).
             - Tạo nhãn `target`: So sánh giá đóng cửa ngày tiếp theo với ngày hiện tại (1 nếu tăng, 0 nếu giảm). Cần sử dụng `.shift(-1)` trên chuỗi giá trị đóng cửa theo từng Symbol.
-    *   [ ] **Bước 6.3: Phát triển script huấn luyện `ml/training/train.py`**:
+    *   [x] **Bước 6.3: Phát triển script huấn luyện `ml/training/train.py`**:
         *   *Nhiệm vụ*: Lấy dữ liệu từ `build_features.py`, chia tập Train/Test theo thời gian (ví dụ: 80% thời gian đầu để train, 20% sau để test, tránh dùng random train_test_split làm rò rỉ dữ liệu).
         *   *Huấn luyện*: Sử dụng `XGBoostClassifier` để học xu hướng lên/xuống của thị trường.
         *   *MLflow Integration*:
             - Thiết lập tracking URI: `mlflow.set_tracking_uri("http://localhost:5000")`.
             - Mở context `with mlflow.start_run():` để log các tham số (`max_depth`, `n_estimators`, `learning_rate`) và các metric đánh giá (`accuracy`, `precision`, `recall`, `f1_score`).
             - Log mô hình bằng `mlflow.xgboost.log_model(model, "price_direction_model")` và đăng ký phiên bản mô hình lên Model Registry với tag alias `Production`.
-    *   [ ] **Bước 6.4: Thiết lập Airflow DAG điều phối việc huấn luyện định kỳ (`dags/tradestream/ml_pipelines.py`)**:
+    *   [x] **Bước 6.4: Thiết lập Airflow DAG điều phối việc huấn luyện định kỳ (`dags/tradestream/ml_pipelines.py`)**:
         *   Tạo DAG `ml_training_pipeline` chạy định kỳ hàng tuần (ví dụ: `0 0 * * 0` vào Chủ Nhật) để trigger script `train.py`.
+ 
+*   **ML Prediction Flow (Hướng dẫn thực hiện)**:
+    *   [x] **Bước 6.5: Thiết lập bảng `daily_predictions` trong TimescaleDB**:
+        *   *Nhiệm vụ*: Tạo bảng đích để lưu trữ dự báo của mô hình.
+        *   *Schema mẫu (Khởi tạo trên database `tradestream`)*:
+            ```sql
+            CREATE TABLE IF NOT EXISTS daily_predictions (
+                symbol VARCHAR(20) NOT NULL,
+                prediction_date DATE NOT NULL,      -- Ngày được dự báo (ví dụ ngày mai)
+                predicted_direction INT NOT NULL,   -- 1: Tăng, 0: Giảm
+                probability DOUBLE PRECISION,       -- Độ tin cậy (xác suất dự báo)
+                model_version VARCHAR(50),          -- Version mô hình từ MLflow
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (symbol, prediction_date)
+            );
+            -- Chuyển thành Hypertable phân vùng theo ngày
+            SELECT create_hypertable('daily_predictions', 'prediction_date', if_not_exists => TRUE);
+            CREATE INDEX IF NOT EXISTS ix_predictions_symbol_time ON daily_predictions (symbol, prediction_date DESC);
+            ```
+    *   [x] **Bước 6.6: Phát triển script batch inference `ml/serving/predict.py`**:
+        *   *Nhiệm vụ*: Tải mô hình `Production` từ MLflow Server (`mlflow.pyfunc.load_model("models:/price_direction_model/Production")`).
+        *   *Luồng xử lý*:
+            - Lấy đặc trưng ngày hiện tại (`fetch_date` hôm nay) từ Trino.
+            - Chạy dự đoán xu hướng cho ngày mai.
+            - Ghi kết quả vào bảng `daily_predictions` trong TimescaleDB, thiết lập `prediction_date` là ngày tiếp theo để có thể so khớp với dữ liệu thực tế sau đó.
+    *   [x] **Bước 6.7: Thiết lập Airflow DAG chạy dự báo hàng ngày**:
+        *   Tạo DAG `ml_prediction_pipeline` chạy hàng ngày lúc 23:00 (sau khi dữ liệu giá của ngày hiện tại đã đồng bộ thành công qua Cold Path).`.
 
 *   **ML Prediction Flow (Hướng dẫn thực hiện)**:
     *   [ ] **Bước 6.5: Thiết lập bảng `daily_predictions` trong TimescaleDB**:

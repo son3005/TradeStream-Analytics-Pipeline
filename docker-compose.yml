@@ -351,7 +351,7 @@ services:
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
 
       # Cài đặt thêm thư viện Python cho Airflow khi khởi động
-      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3"
+      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy"
 
       # Secret keys (giá trị thật nằm trong .env, KHÔNG hardcode ở đây)
       AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
@@ -367,9 +367,8 @@ services:
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/passwords.json
     volumes:
       - ./dags:/opt/airflow/dags
-      # Mount thư mục src để Airflow gọi được các script Python & Spark
       - ./src:/opt/airflow/src
-      # Mount file password vào container
+      - ./ml:/opt/airflow/ml
       - ./infrastructure/airflow/passwords.json:/opt/airflow/passwords.json
     # Airflow 3.x đổi "webserver" → "api-server" (giao diện web + API gộp chung)
     command: airflow api-server
@@ -407,7 +406,7 @@ services:
       # Scheduler cần biết API Server ở đâu để giao việc cho Worker
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
 
-      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3"
+      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy"
 
       # Biến môi trường cho DAGs (đọc từ .env)
       YAHOO_FINANCE_URL: ${YAHOO_FINANCE_URL}
@@ -415,9 +414,8 @@ services:
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
-      # Mount config/ để DAGs đọc file symbols.json
+      - ./ml:/opt/airflow/ml
       - ./config:/opt/airflow/config
-      # Mount Docker socket để Airflow Scheduler có thể gọi 'docker exec' vào Spark container
       - /var/run/docker.sock:/var/run/docker.sock
     command: airflow scheduler
     networks:
@@ -447,10 +445,11 @@ services:
       AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
-      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3"
+      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy"
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
+      - ./ml:/opt/airflow/ml
       - ./config:/opt/airflow/config
       - /var/run/docker.sock:/var/run/docker.sock
     command: airflow triggerer
@@ -485,11 +484,11 @@ services:
       AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
-      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3"
+      _PIP_ADDITIONAL_REQUIREMENTS: "aiohttp confluent-kafka pyspark==3.5.3 mlflow trino xgboost scikit-learn pandas numpy"
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
-      # DAG processor cũng cần config/ vì nó parse file Python (đọc symbols.json)
+      - ./ml:/opt/airflow/ml
       - ./config:/opt/airflow/config
     command: airflow dag-processor
     networks:
@@ -499,6 +498,26 @@ services:
         limits:
           cpus: '0.5'
           memory: 512M
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow
+    profiles: [ "ml" ]
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --workers 1
+        --allowed-hosts "*"
+        --backend-store-uri sqlite:///mlflow/mlflow.db
+        --default-artifact-root mlflow-artifacts:/
+        --serve-artifacts
+    volumes:
+      - mlflow_data:/mlflow
+    networks:
+      - tradestream-net
 
 networks:
   tradestream-net:
@@ -513,4 +532,5 @@ volumes:
   grafana_data: # Volume mới cho database nội bộ của Airflow
   airflow_metadata:
   minio_data:
+  mlflow_data:
 
