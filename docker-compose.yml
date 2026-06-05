@@ -113,6 +113,8 @@ services:
     volumes:
       # Mount thư mục src vào Spark container (nơi có Java + Spark đầy đủ)
       - ./src:/opt/airflow/src
+      # Mount thư mục tests vào Spark container phục vụ unit test
+      - ./tests:/opt/airflow/tests
       # Mount thư mục config để truy cập file symbols.json
       - ./config:/opt/airflow/config
       # Mount file cấu hình mặc định cho Spark
@@ -146,6 +148,8 @@ services:
     volumes:
       # Mount thư mục src vào Spark container (nơi có Java + Spark đầy đủ)
       - ./src:/opt/airflow/src
+      # Mount thư mục tests vào Spark container phục vụ unit test
+      - ./tests:/opt/airflow/tests
       # Mount thư mục config để truy cập file symbols.json
       - ./config:/opt/airflow/config
       # Mount file cấu hình mặc định cho Spark

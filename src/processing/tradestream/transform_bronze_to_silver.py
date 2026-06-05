@@ -1,6 +1,6 @@
 import os
 import sys
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, DataFrame
 import pyspark.sql.functions as F
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType
 from pyspark.sql.window import Window
@@ -25,6 +25,72 @@ def get_tick_schema() -> StructType:
         StructField("quantity", DoubleType(), True),
         StructField("trade_time", LongType(), True)
     ])
+
+def calculate_daily_ohlcv(df_with_date: DataFrame) -> DataFrame:
+    """Gom nhóm dữ liệu ticks theo symbol và fetch_date để tính toán nến ngày OHLCV.
+
+    Args:
+        df_with_date (DataFrame): DataFrame đầu vào chứa các cột symbol, price, quantity, 
+                                  trade_time, và fetch_date.
+
+    Returns:
+        DataFrame: DataFrame kết quả chứa các cột: symbol, fetch_date, open_price, 
+                   high_price, low_price, close_price, và volume.
+    """
+    # Định nghĩa Window để lấy giá Open và Close chính xác theo thời gian giao dịch
+    window_asc = Window.partitionBy("symbol", "fetch_date").orderBy("trade_time")
+    window_desc = Window.partitionBy("symbol", "fetch_date").orderBy(F.col("trade_time").desc())
+    
+    # Thêm các cột Open/Close tạm thời cho mỗi giao dịch dựa trên window
+    df_ohlcv_temp = (
+        df_with_date
+        .withColumn("first_price", F.first("price").over(window_asc))
+        .withColumn("last_price", F.first("price").over(window_desc))
+    )
+    
+    # Gom nhóm theo mã tài sản và ngày để tính toán các chỉ số OHLCV thực tế
+    return (
+        df_ohlcv_temp
+        .groupBy("symbol", "fetch_date")
+        .agg(
+            F.first("first_price").alias("open_price"),
+            F.max("price").alias("high_price"),
+            F.min("price").alias("low_price"),
+            F.first("last_price").alias("close_price"),
+            F.coalesce(F.sum("quantity").cast(LongType()), F.lit(0)).alias("volume")
+        )
+    )
+
+def calculate_daily_indicators(dedup_df: DataFrame) -> DataFrame:
+    """Tính toán chỉ báo kỹ thuật ngày (Daily Return, Price Range) dựa trên OHLCV.
+
+    Args:
+        dedup_df (DataFrame): DataFrame chứa thông tin nến ngày OHLCV.
+
+    Returns:
+        DataFrame: DataFrame kết quả có thêm cột daily_return và price_range,
+                   đồng thời làm đầy (fill) các giá trị null bằng giá trị mặc định.
+    """
+    window_spec = Window.partitionBy("symbol").orderBy("fetch_date")
+
+    return (
+        dedup_df
+        .withColumn("prev_close", F.lag("close_price", 1).over(window_spec))
+        .withColumn(
+            "daily_return",
+            F.when(F.col("prev_close").isNotNull() & (F.col("prev_close") > 0),
+                   ((F.col("close_price") - F.col("prev_close")) / F.col("prev_close")) * 100
+            ).otherwise(0.0)
+        )
+        .withColumn(
+            "price_range",
+            F.when(F.col("low_price") > 0,
+                   ((F.col("high_price") - F.col("low_price")) / F.col("low_price")) * 100
+            ).otherwise(0.0)
+        )
+        .na.fill(value=0.0, subset=["open_price", "high_price", "low_price", "close_price", "daily_return", "price_range"])
+        .na.fill(value=0, subset=["volume"])
+    )
 
 def main() -> None:
     """Biến đổi dữ liệu thô từ tầng Bronze sang nến ngày tầng Silver (Apache Iceberg).
@@ -83,54 +149,13 @@ def main() -> None:
             F.to_date(F.from_unixtime(F.col("trade_time") / 1000))
         )
         
-        # Định nghĩa Window để lấy giá Open và Close chính xác theo thời gian giao dịch
-        window_asc = Window.partitionBy("symbol", "fetch_date").orderBy("trade_time")
-        window_desc = Window.partitionBy("symbol", "fetch_date").orderBy(F.col("trade_time").desc())
-        
-        # Thêm các cột Open/Close tạm thời cho mỗi giao dịch dựa trên window
-        df_ohlcv_temp = (
-            df_with_date
-            .withColumn("first_price", F.first("price").over(window_asc))
-            .withColumn("last_price", F.first("price").over(window_desc))
-        )
-        
-        # Gom nhóm theo mã tài sản và ngày để tính toán các chỉ số OHLCV thực tế
-        dedup_df = (
-            df_ohlcv_temp
-            .groupBy("symbol", "fetch_date")
-            .agg(
-                F.first("first_price").alias("open_price"),
-                F.max("price").alias("high_price"),
-                F.min("price").alias("low_price"),
-                F.first("last_price").alias("close_price"),
-                F.coalesce(F.sum("quantity").cast(LongType()), F.lit(0)).alias("volume")
-            )
-        )
+        dedup_df = calculate_daily_ohlcv(df_with_date)
 
         # =====================================================================
         # 7. TÍNH TOÁN CHỈ BÁO KỸ THUẬT (Daily Return & Price Range)
         # =====================================================================
         print("[*] Bước 3: Áp dụng Window Functions để tính Daily Return và Price Range...")
-        window_spec = Window.partitionBy("symbol").orderBy("fetch_date")
-
-        processed_df = (
-            dedup_df
-            .withColumn("prev_close", F.lag("close_price", 1).over(window_spec))
-            .withColumn(
-                "daily_return",
-                F.when(F.col("prev_close").isNotNull() & (F.col("prev_close") > 0),
-                       ((F.col("close_price") - F.col("prev_close")) / F.col("prev_close")) * 100
-                ).otherwise(0.0)
-            )
-            .withColumn(
-                "price_range",
-                F.when(F.col("low_price") > 0,
-                       ((F.col("high_price") - F.col("low_price")) / F.col("low_price")) * 100
-                ).otherwise(0.0)
-            )
-            .na.fill(value=0.0, subset=["open_price", "high_price", "low_price", "close_price", "daily_return", "price_range"])
-            .na.fill(value=0, subset=["volume"])
-        )
+        processed_df = calculate_daily_indicators(dedup_df)
 
         # =====================================================================
         # 8. LIÊN KẾT VỚI BẢNG DIMENSION DATE (STAR SCHEMA)

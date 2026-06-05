@@ -1,0 +1,16 @@
+# Cấu hình Ruff linter cho dự án TradeStream
+exclude = [
+    ".git",
+    "venv",
+    "notebooks",
+    "__pycache__",
+    "build",
+    "dist",
+    "tools"
+]
+
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "I"] # Pycodestyle (E, W), Pyflakes (F), Isort (I)
+ignore = []

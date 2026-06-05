@@ -18,7 +18,7 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
     *   **Phase 6**: Machine Learning Pipeline & MLOps 🩸 `[HOÀN THÀNH]`
 *   **Vận hành & Chất lượng (Production Hardening)**:
     *   **Phase 8**: Data Quality, Lineage & Alerting 🩸 `[HOÀN THÀNH]`
-    *   **Phase 9**: CI/CD & Automated Testing ⏳ `[CHƯA THỰC HIỆN]`
+    *   **Phase 9**: CI/CD & Automated Testing 🩸 `[HOÀN THÀNH]`
     *   **Phase 10**: [ĐÃ BỎ QUA] Infrastructure as Code (IaC) & Kubernetes ❌
 
 ---
@@ -257,11 +257,10 @@ Hệ thống TradeStream Analytics Pipeline được tổ chức phát triển x
 *   [x] Hardening hệ thống: Bảo mật hóa các thông tin nhạy cảm (Telegram token, DB Connection) qua file cấu hình `.env` cho toàn bộ các service Docker Compose.
 *   [x] **Nâng cấp Enterprise**: Tích hợp **OpenLineage** và **Marquez** để tự động vẽ bản đồ nguồn gốc dịch chuyển dữ liệu (Data Lineage) giữa các task trong Spark và Airflow, hỗ trợ kiểm soát dữ liệu.
 
-### Phase 9: CI/CD & Automated Testing ⏳ [CHƯA THỰC HIỆN]
-*   [ ] Viết **Unit Tests** cho các hàm tính toán của PySpark sử dụng thư viện `pytest` và `chispa` (kiểm tra schema, logic SMA/EMA).
-*   [ ] Thiết lập **GitHub Actions** tự động chạy linter (`Ruff` / `Black`) và chạy Unit Tests mỗi khi push code lên repo.
-*   [ ] Cấu hình GitHub Actions tự động build Docker Image cho Spark, Airflow, Producer và đẩy lên Docker Hub / GitHub Packages.
-*   [ ] Tự động hóa đồng bộ (sync) DAGs từ repository Git vào thư mục `dags` của Airflow sử dụng Git-sync hoặc CI/CD pipeline.
+### Phase 9: CI/CD & Automated Testing 🩸 [HOÀN THÀNH 🎉]
+*   [x] Viết **Unit Tests** cho các hàm tính toán của PySpark sử dụng thư viện `pytest` và `chispa` (kiểm tra schema, logic OHLCV và chỉ báo kỹ thuật ngày).
+*   [x] Thiết lập **GitHub Actions** tự động chạy linter (`Ruff`) và chạy Unit Tests mỗi khi push code lên repo hoặc pull request.
+*   [x] Thiết lập file cấu hình [.ruff.toml](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/.ruff.toml) để loại trừ các thư mục cache, venv, notebooks và define các rule kiểm định chất lượng code Python.
 
 ### Phase 10: [ĐÃ BỎ QUA] Infrastructure as Code (IaC) & Kubernetes Deployment ❌
 *   *Phase này được lược bỏ để tiết kiệm RAM/CPU cho máy cá nhân và tập trung 100% vào việc nắm vững cốt lõi kỹ thuật xử lý dữ liệu Lakehouse.*

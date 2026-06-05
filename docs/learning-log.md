@@ -802,3 +802,20 @@ Trong các hệ thống dữ liệu doanh nghiệp lớn, việc đồng bộ d�
 - **Khắc phục lỗi rò rỉ tệp tin rác trong container Spark master**:
   - Do operator bị deserialize lại sau khi resume từ trạng thái trì hoãn (`deferred`), các biến thành viên `self.status_file` and `self.log_file` bị rỗng. Điều này khiến hệ thống không thể đọc log thực tế và không dọn dẹp được các tệp tạm trên container.
   - *Giải pháp*: Đóng gói các đường dẫn tệp tạm này vào đối tượng `DockerSparkJobTrigger` và truyền ngược lại thông qua sự kiện `TriggerEvent` để hàm callback `execute_complete` có thể đọc log và xóa tệp tạm chính xác 100%.
+
+---
+
+### Ngày 17 (Hoàn thành Phase 9: CI/CD & Automated Testing cho Spark & Python)
+- **Kiểm thử đơn vị cho PySpark (PySpark Unit Testing)**:
+  - Tách các logic biến đổi dữ liệu (Transformation) của Spark Job ra khỏi logic đọc/ghi (I/O) thành các hàm thuần túy (pure functions) nhận `DataFrame` đầu vào và trả về `DataFrame` đầu ra (ví dụ: `calculate_daily_ohlcv` và `calculate_daily_indicators` trong [transform_bronze_to_silver.py](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/src/processing/tradestream/transform_bronze_to_silver.py)).
+  - Thiết lập fixture kiểm thử trong `pytest` khởi tạo `SparkSession` local chạy trong bộ nhớ (`.master("local[*]")`), tự động đóng session sau khi chạy xong tất cả các tests.
+- **So sánh DataFrame nghiêm ngặt với Chispa**:
+  - Tích hợp thư viện `chispa` để kiểm thử và so sánh chính xác dữ liệu của 2 DataFrame (Actual vs Expected) cả về dữ liệu và schema thông qua hàm `assert_df_equality`.
+  - **Sự cố Nullable Mismatch**: Khi so sánh, PySpark tự động chuyển đổi thuộc tính `nullable` sang `False` đối với các cột được áp dụng `.na.fill()` hoặc `.otherwise()`, trong khi schema dữ liệu mong đợi do chúng ta định nghĩa mặc định có thuộc tính `nullable=True`. Điều này dẫn tới lỗi `SchemasNotEqual`.
+  - *Giải pháp*: Sử dụng tùy chọn `ignore_nullable=True` trong hàm `assert_df_equality` để bỏ qua sự khác biệt nhỏ về tính chất nullable của cột và tập trung so sánh cấu trúc kiểu dữ liệu cùng giá trị thực tế của các ô dữ liệu.
+- **Giải quyết lỗi JVM Gateway Exited trong container**:
+  - Khi thực thi pytest trên container `spark-master` của Airflow, JVM trả về lỗi `Java gateway process exited` và `Permission denied` do user mặc định không có đủ quyền ghi cache cho Ivy và file tạm trong thư mục `/opt`.
+  - *Giải pháp*: Thực thi lệnh kiểm thử dưới quyền root bằng cờ `-u root` (`docker exec -u root ...`), đồng thời thiết lập biến môi trường `PYTHONPATH` trỏ đầy đủ tới các gói PySpark và file zip hỗ trợ (`py4j`, `pyspark.zip`) để Python tìm thấy module chính xác.
+- **Tự động hóa Linting và CI/CD**:
+  - Thiết lập file cấu hình [.ruff.toml](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/.ruff.toml) cấu hình linter `Ruff` cực nhanh để tự động kiểm tra code style (formatting, imports order, code quality rules E, F, W, I), loại trừ các thư mục môi trường ảo và thư mục build rác.
+  - Thiết lập workflow tự động GitHub Actions [.github/workflows/ci.yml](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/.github/workflows/ci.yml) tự động kích hoạt khi push/pull request. Workflow thực hiện setup JDK 11 (bắt buộc cho Spark), Python 3.10, cài đặt dependencies, chạy Ruff linting và thực thi pytest unit test suite tự động hoàn toàn.
