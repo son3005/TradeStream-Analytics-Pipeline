@@ -97,15 +97,25 @@ Dự án tích hợp các công nghệ xử lý dữ liệu lớn (Big Data) và
 
 ```text
 TradeStream Analytics Pipeline/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                    # Workflow CI/CD chạy Ruff linting và PySpark unit tests
 ├── config/
 │   └── symbols.json                  # Cấu hình danh sách mã cổ phiếu và coin cần tracking
 ├── dags/
 │   ├── tradestream/                  # Thư mục chứa các DAGs vận hành chính thức
+│   │   ├── operators/
+│   │   │   └── docker_spark_operator.py # Custom Airflow Operator chạy Spark trên Docker
+│   │   ├── utils/
+│   │   │   └── alerts.py             # Hệ thống gửi tin nhắn cảnh báo Telegram
+│   │   ├── backfill.py               # Airflow DAG backfill dữ liệu lịch sử
 │   │   ├── daily_batch.py            # Airflow DAG điều phối Cold Path (5 phút)
-│   │   ├── data_quality.py           # Airflow DAG kiểm định chất lượng dữ liệu
-│   │   └── backfill.py               # Airflow DAG backfill dữ liệu lịch sử
+│   │   ├── data_quality.py           # Airflow DAG kiểm định chất lượng dữ liệu (Great Expectations)
+│   │   ├── ml_pipeline.py            # Airflow DAG điều phối ML Training & serving
+│   │   └── stream_hot_path_dag.py    # Airflow DAG quản lý Spark Structured Streaming (Hot Path)
 │   └── examples/                     # Thư mục chứa các DAGs ví dụ / học tập
-│       └── hello_dag.py              # DAG demo hello world mẫu
+│       ├── hello_dag.py              # DAG demo hello world mẫu
+│       └── test_deferrable_dag.py    # DAG demo deferrable mode operator
 ├── dashboards/
 │   └── grafana.json                  # Mẫu dashboard xuất bản sẵn cho Grafana
 ├── docs/
@@ -119,29 +129,44 @@ TradeStream Analytics Pipeline/
 │   │   └── spark-defaults.conf       # Cấu hình mặc định cho Spark master/worker
 │   └── trino/
 │       └── catalog/                  # Cấu hình kết nối Trino đến Iceberg
-│   └── docker-compose.yml            # Tệp docker-compose điều khiển toàn bộ cluster
-├── src/
+├── ml/                               # Thư mục chứa mã nguồn Machine Learning & MLOps
+│   ├── features/
+│   │   └── build_features.py         # Trích xuất dữ liệu và tạo đặc trưng (Lag features)
+│   ├── serving/
+│   │   └── predict.py                # Nạp mô hình Production từ MLflow và dự đoán hàng ngày
+│   └── training/
+│       └── train.py                  # Huấn luyện mô hình, log MLflow và so sánh Champion vs Challenger
+├── src/                              # Mã nguồn logic xử lý chính của hệ thống
 │   ├── producers/
 │   │   ├── crypto_producer.py        # Async Producer stream dữ liệu Binance websockets
 │   │   └── stock_producer.py         # Async Producer poll dữ liệu Yahoo Finance API mỗi 10 giây
 │   ├── processing/
 │   │   └── tradestream/              # Spark jobs của luồng TradeStream chính thức
-│   │       ├── ingest_raw_to_bronze.py      # Kafka -> MinIO Bronze (JSON raw)
-│   │       ├── transform_bronze_to_silver.py # Bronze -> Silver Iceberg (OHLCV nến ngày)
-│   │       └── sync_silver_to_postgres.py    # Silver Iceberg -> Serving DB
+│   │       ├── ingest_raw_to_bronze.py       # Kafka -> MinIO Bronze (JSON raw)
+│   │       ├── stream_hot_path.py            # Spark Structured Streaming: Ticks -> Serving DB
+│   │       ├── sync_silver_to_postgres.py     # Silver Iceberg -> Serving DB
+│   │       └── transform_bronze_to_silver.py  # Bronze -> Silver Iceberg (OHLCV nến ngày)
 │   ├── management/                   # Các script khởi tạo và bảo trì định kỳ
 │   │   ├── create_star_schema.py     # Setup Iceberg tables & nạp dữ liệu dim ban đầu
 │   │   ├── generate_dim_date.py      # Sinh dữ liệu dim_date CSV
 │   │   ├── maintain_lakehouse.py     # Bảo trì Iceberg compaction, expire snapshots
 │   │   └── dim_date.csv              # Dữ liệu tĩnh dim_date phục vụ load ban đầu
 │   └── utils/
+│       ├── data_quality_helper.py    # Lớp kiểm định dữ liệu với Great Expectations 1.x
 │       └── spark_helper.py           # Khởi tạo Spark Session & DB credentials
+├── tests/                            # Bộ unit test suite của dự án
+│   └── unit/
+│       └── test_transform_silver.py  # Kiểm thử logic OHLCV và indicators của Spark
 ├── tools/                            # Các công cụ kiểm thử kết nối, thí nghiệm và legacy
+│   ├── init_project.ps1              # Kịch bản khởi chạy & cài đặt tự động trên Windows
+│   ├── init_project.sh               # Kịch bản khởi chạy & cài đặt tự động trên Linux/macOS
 │   ├── test_kafka_producer.py        # Script test gửi tin nhắn nhanh tới Kafka
 │   ├── test_minio_connection.py      # Script test kết nối MinIO
 │   ├── verify_iceberg_features.py    # Script demo xác minh tính năng Iceberg
 │   └── yahoo_batch_producer.py       # Script legacy Phase 1 batch producer
+├── docker-compose.yml                # Tệp docker-compose điều khiển toàn bộ cluster
 ├── requirements.txt                  # Các thư viện Python phụ thuộc của môi trường local
+├── .ruff.toml                        # Tệp cấu hình Ruff linter
 └── .env                              # Quản lý toàn bộ cấu hình, tài khoản hệ thống (Không commit)
 ```
 
