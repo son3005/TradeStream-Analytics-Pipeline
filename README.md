@@ -61,7 +61,14 @@ Dự án tích hợp các công nghệ xử lý dữ liệu lớn (Big Data) và
         - Sử dụng plugin OpenLineage của Airflow và Spark (`io.openlineage.spark.agent.OpenLineageSparkListener`) để tự động thu thập metadata và sơ đồ phụ thuộc của từng dataset khi job chạy.
         - Mọi sự kiện START/COMPLETE/FAIL được gửi về **Marquez API** (cổng 8090) và hiển thị trực quan sơ đồ Lineage trên **Marquez Web UI** (cổng 8091).
 
-### 5. Lưu trữ & Legacy (Phase 1)
+### 5. CI/CD & Automated Testing (Kiểm thử & Tự động hóa - Phase 9 - Đã triển khai)
+*   **Mục tiêu**: Tự động hóa kiểm tra chất lượng code (Linting) và đảm bảo tính chính xác của các thuật toán biến đổi dữ liệu (Unit Testing) trước khi triển khai/đẩy mã nguồn mới.
+*   **Cơ chế hoạt động**:
+    1.  **PySpark Unit Testing & Chispa**: Kiểm thử độc lập logic biến đổi dữ liệu của Spark Job (như tính toán OHLCV, daily returns, price range) sử dụng mock data chạy trên Spark Session cục bộ và so sánh DataFrame bằng `chispa` (bỏ qua khác biệt thuộc tính nullable qua `ignore_nullable=True`).
+    2.  **Ruff Code Linter**: Tự động phân tích, định dạng và kiểm tra lỗi code style (formatting, import sorting, unused variables) với tốc độ cực nhanh thông qua cấu hình [.ruff.toml](file:///E:/DuAn/TradeStream%20Analytics%20Pipeline/.ruff.toml).
+    3.  **GitHub Actions CI/CD**: Mỗi lần push hoặc tạo Pull Request trên nhánh `main`, hệ thống tự động chạy workflow cài đặt JDK 11, Python 3.10, cài đặt dependencies, chạy kiểm tra Ruff linter và thực thi toàn bộ test suite.
+
+### 6. Lưu trữ & Legacy (Phase 1)
 *   **`yahoo_batch_producer.py`**: Producer cũ ở Phase 1 để kéo dữ liệu nến ngày thô trực tiếp từ Yahoo Finance API (với tham số `range=1d&interval=1d`) và đẩy vào Kafka topic `raw_daily_prices`.
 *   **Trạng thái**: Đã được lưu trữ trong thư mục `tools/` và thay thế hoàn toàn bằng luồng Ingest Ticks thô tự động từ các active producers thời gian thực ở trên. Bảng Iceberg Silver giờ đây tự tổng hợp OHLCV trực tiếp từ ticks thay vì nạp nến 1 ngày thô.
 
@@ -246,7 +253,31 @@ Sau khi khởi chạy hệ thống, bạn có thể truy cập các địa chỉ
 *   **Marquez Web UI (Data Lineage)**: [http://localhost:8091](http://localhost:8091) (API backend chạy trên cổng `8090`)
 *   **MLflow Server (MLOps Dashboard)**: [http://localhost:5000](http://localhost:5000)
 
+### Bước 6: Chạy Unit Tests và Linting (Local)
+Bạn có thể tự chạy kiểm thử và quét lỗi code style cục bộ để kiểm tra tính chính xác của hệ thống:
+*   **Chạy PySpark Unit Tests**:
+    ```bash
+    # Chạy trên máy host (đảm bảo đã kích hoạt venv và cài đặt dependencies)
+    export PYTHONPATH=$PYTHONPATH:.
+    pytest tests/unit
+    ```
+    *(Hoặc chạy trực tiếp bên trong container `spark-master` dưới quyền root):*
+    ```bash
+    docker exec -u root spark-master pytest /opt/airflow/tests/unit
+    ```
+*   **Chạy Ruff Linter**:
+    ```bash
+    # Kiểm tra code style
+    ruff check .
+    # Tự động sửa các lỗi định dạng
+    ruff check --fix .
+    ```
+
 ---
 
-## 📈 Lộ trình Phát triển tiếp theo (Next Steps)
-1.  **Phase 9 (CI/CD & Automated Testing)**: Thiết lập unit tests bằng `pytest` và `chispa` cho logic Spark, tích hợp linter Ruff/Black và tạo luồng CI/CD build Docker Image qua GitHub Actions.
+## 🏆 Tổng kết Dự án & Trạng thái Hoàn thành
+Dự án đã được triển khai hoàn tất **100%** từ **Phase 0 đến Phase 9**, xây dựng thành công một hệ thống Data Lakehouse tài chính hoàn chỉnh, chịu lỗi tốt, tối ưu tài nguyên và tự động hóa toàn bộ vòng đời phát triển:
+- **Phase 0-2**: Thiết lập Zookeeper, Kafka Brokers, Python Producers và Spark Streaming.
+- **Phase 3-4**: Thiết lập Medallion Lakehouse với MinIO, Apache Iceberg, và Trino Query Engine.
+- **Phase 5-7**: Tích hợp Airflow Orchestration, MLOps (XGBoost/LightGBM + MLflow) và đồng bộ Serving DB.
+- **Phase 8-9**: Cài đặt Data Quality Gate (Great Expectations), Data Lineage (Marquez) và CI/CD hoàn chỉnh (Ruff + pytest + GitHub Actions).
