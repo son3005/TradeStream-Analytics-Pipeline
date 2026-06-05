@@ -5,12 +5,13 @@
 # ============================================================
 
 import logging
-from typing import Dict, Any, List
-import pandas as pd
+from typing import Any, Dict, List
+
 import great_expectations as gx
+import pandas as pd
 from great_expectations.expectations import (
-    ExpectColumnValuesToNotBeNull,
     ExpectColumnValuesToBeBetween,
+    ExpectColumnValuesToNotBeNull,
 )
 
 logger = logging.getLogger("airflow.task")
@@ -120,7 +121,7 @@ class DataQualityChecker:
         # 6. Tổng hợp kết quả chi tiết
         failed_rules: List[Dict[str, Any]] = []
         validation_result_details = result.run_results[list(result.run_results.keys())[0]]
-        
+
         for rule_res in validation_result_details.results:
             if not rule_res.success:
                 expectation_config = rule_res.expectation_config

@@ -3,8 +3,9 @@
 # MỤC ĐÍCH: Điều phối Real-Time Cold Path Pipeline (5-minute micro-batch)
 # ============================================================
 
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime, timedelta
+
 from airflow.decorators import dag
 from tradestream.operators.docker_spark_operator import DockerSparkSubmitOperator
 from tradestream.utils.alerts import send_telegram_alert
@@ -32,7 +33,7 @@ default_args = {
     max_active_runs=1,
 )
 def realtime_cold_path_pipeline():
-    
+
     ingest_kafka_to_bronze = DockerSparkSubmitOperator(
         task_id="ingest_kafka_to_bronze",
         script_path="/opt/airflow/src/processing/tradestream/ingest_raw_to_bronze.py",

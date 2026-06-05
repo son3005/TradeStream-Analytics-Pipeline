@@ -3,8 +3,9 @@
 # MỤC ĐÍCH: Điều phối Machine Learning Training & Prediction Pipelines
 # ============================================================
 
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime, timedelta
+
 from airflow.decorators import dag, task
 from tradestream.utils.alerts import send_telegram_alert
 
@@ -34,18 +35,18 @@ default_args: dict = {
     max_active_runs=1,
 )
 def ml_training_pipeline():
-    
+
     @task(task_id="train_model_task")
     def train_model() -> None:
         """
         Task của Airflow gọi tiến trình huấn luyện mô hình và đăng ký lên MLflow.
-        
+
         Args:
             Không có tham số đầu vào.
-            
+
         Returns:
             None.
-            
+
         Raises:
             Exception: Lỗi phát sinh từ script ml.training.train.
         """
@@ -79,18 +80,18 @@ training_dag = ml_training_pipeline()
     max_active_runs=1,
 )
 def ml_prediction_pipeline():
-    
+
     @task(task_id="predict_price_task")
     def predict_price() -> None:
         """
         Task của Airflow gọi tiến trình dự đoán xu hướng giá và lưu vào TimescaleDB.
-        
+
         Args:
             Không có tham số đầu vào.
-            
+
         Returns:
             None.
-            
+
         Raises:
             Exception: Lỗi phát sinh từ script ml.serving.predict.
         """

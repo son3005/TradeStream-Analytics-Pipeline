@@ -1,7 +1,9 @@
 import os
+from typing import Any, Dict, Optional
 from urllib.parse import urlparse
-from typing import Dict, Any, Optional
+
 from pyspark.sql import SparkSession
+
 
 def get_db_credentials() -> Dict[str, Any]:
     """Phân tích các cài đặt kết nối cơ sở dữ liệu từ biến môi trường TIMESCALE_CONN.
@@ -49,8 +51,8 @@ def get_db_credentials() -> Dict[str, Any]:
     }
 
 def get_spark_session(
-    app_name: str, 
-    enable_iceberg: bool = True, 
+    app_name: str,
+    enable_iceberg: bool = True,
     custom_packages: Optional[str] = None
 ) -> SparkSession:
     """Khởi tạo và cấu hình một đối tượng SparkSession tích hợp các thiết lập MinIO và Iceberg.
@@ -69,7 +71,7 @@ def get_spark_session(
     minio_bucket: str = os.environ.get("MINIO_LAKEHOUSE_BUCKET", "lakehouse")
     minio_endpoint: str = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
     spark_master: str = os.environ.get("SPARK_MASTER", "spark://spark-master:7077")
-    
+
     # Combined package list containing all necessary packages (Kafka, Iceberg, Postgres, AWS S3, OpenLineage)
     default_packages: str = (
         "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,"
@@ -79,7 +81,7 @@ def get_spark_session(
         "com.amazonaws:aws-java-sdk-bundle:1.12.262,"
         "io.openlineage:openlineage-spark_2.12:1.15.0"
     )
-    
+
     spark_packages: str = custom_packages or os.environ.get("SPARK_PACKAGES") or default_packages
 
     # 2. Get DB configuration

@@ -3,7 +3,8 @@
 # MỤC ĐÍCH: DAG kiểm thử nhanh Deferrable Operator và Cảnh báo Telegram
 # ============================================================
 
-from datetime import datetime, timedelta
+from datetime import datetime
+
 from airflow import DAG
 from tradestream.operators.docker_spark_operator import DockerSparkSubmitOperator
 from tradestream.utils.alerts import send_telegram_alert

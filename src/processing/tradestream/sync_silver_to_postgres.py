@@ -1,8 +1,8 @@
-import os
 import sys
-from pyspark.sql import SparkSession
+
 import pyspark.sql.functions as F
-from src.utils.spark_helper import get_spark_session, get_db_credentials
+
+from src.utils.spark_helper import get_db_credentials, get_spark_session
 
 # Kích hoạt chế độ mã hóa ký tự UTF-8 cho Windows để hiển thị log tiếng Việt chính xác
 if sys.platform == 'win32':
@@ -11,8 +11,8 @@ if sys.platform == 'win32':
 def main() -> None:
     """Đồng bộ dữ liệu nến ngày từ tầng Silver Iceberg sang Serving DB TimescaleDB.
 
-    Đọc bảng dữ liệu fact_daily_prices, JOIN với dim_date và dim_assets để dàn phẳng 
-    dữ liệu (Denormalization), ghi vào bảng staging tạm thời trên Postgres, sau đó 
+    Đọc bảng dữ liệu fact_daily_prices, JOIN với dim_date và dim_assets để dàn phẳng
+    dữ liệu (Denormalization), ghi vào bảng staging tạm thời trên Postgres, sau đó
     thực thi native UPSERT (ON CONFLICT DO UPDATE) sang bảng daily_prices của TimescaleDB.
 
     Returns:
@@ -25,7 +25,7 @@ def main() -> None:
     # 3. KHỞI TẠO SPARK SESSION VỚI CATALOG LAKEHOUSE ICEBERG
     # =====================================================================
     spark = get_spark_session("SilverToPostgresSync")
-    
+
     # Lấy thông tin DB credentials để ghi dữ liệu JDBC
     db_config = get_db_credentials()
     DB_USER = db_config["user"]
@@ -88,7 +88,7 @@ def main() -> None:
         staging_table = "daily_prices_staging"
         target_table = "daily_prices"
         print(f"[*] Bước 3: Ghi dữ liệu phẳng vào bảng staging tạm thời: {staging_table}...")
-        
+
         (
             flat_df.write
             .format("jdbc")
@@ -109,10 +109,10 @@ def main() -> None:
         print(f"[*] Bước 4: Thực thi truy vấn Upsert (ON CONFLICT) từ bảng Staging sang bảng đích: {target_table}...")
         jvm = spark._jvm
         conn = jvm.java.sql.DriverManager.getConnection(JDBC_URL, DB_USER, DB_PASS)
-        
+
         try:
             stmt = conn.createStatement()
-            
+
             # Sử dụng cú pháp INSERT ... ON CONFLICT DO UPDATE của PostgreSQL
             # Nếu cặp (symbol, fetch_date) đã tồn tại thì cập nhật các chỉ số giá mới nhất
             # Nếu chưa tồn tại thì chèn mới. EXCLUDED đại diện cho dòng dữ liệu mới chuẩn bị ghi từ Staging
@@ -120,7 +120,7 @@ def main() -> None:
                 INSERT INTO {target_table} (
                     symbol, fetch_date, open_price, high_price, low_price, close_price, volume, currency, asset_type
                 )
-                SELECT 
+                SELECT
                     symbol, fetch_date, open_price, high_price, low_price, close_price, volume, currency, asset_type
                 FROM {staging_table}
                 ON CONFLICT (symbol, fetch_date) DO UPDATE SET
@@ -133,12 +133,12 @@ def main() -> None:
                     asset_type = EXCLUDED.asset_type
             """
             stmt.execute(upsert_query)
-            
+
             # Đồng bộ kết thúc thành công, tiến hành DROP bảng staging để giải phóng tài nguyên DB
             print(f"[*] Bước 5: Đồng bộ hoàn tất, tiến hành xóa bảng tạm: {staging_table}...")
             stmt.execute(f"DROP TABLE IF EXISTS {staging_table}")
-            
-            print(f"[SUCCESS] Thực thi truy vấn Upsert thành công và xóa bảng tạm staging!")
+
+            print("[SUCCESS] Thực thi truy vấn Upsert thành công và xóa bảng tạm staging!")
             stmt.close()
         finally:
             # Đảm bảo đóng kết nối JDBC cơ sở dữ liệu để tránh rò rỉ tài nguyên mạng (connection leak)

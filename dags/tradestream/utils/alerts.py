@@ -3,11 +3,12 @@
 # MỤC ĐÍCH: Hỗ trợ gửi thông báo cảnh báo qua Telegram/Slack khi task thất bại
 # ============================================================
 
-import os
 import html
 import logging
-import requests
+import os
 from typing import Any, Dict, Optional
+
+import requests
 from airflow.models import Variable
 
 logger = logging.getLogger("airflow.task")
@@ -29,7 +30,7 @@ def send_telegram_alert(context: Dict[str, Any]) -> None:
     execution_date = context.get("logical_date") or getattr(ti, "logical_date", getattr(ti, "start_date", "N/A"))
     exception = context.get("exception")
     log_url: str = getattr(ti, "log_url", "N/A")
-    
+
     # Nếu log_url là N/A (thường xảy ra ở Airflow 3.x Task SDK do ti bị giới hạn thuộc tính), tự xây dựng URL thủ công
     if not log_url or log_url == "N/A":
         dag_run = context.get("dag_run")
@@ -41,7 +42,7 @@ def send_telegram_alert(context: Dict[str, Any]) -> None:
             base_url = os.environ.get("AIRFLOW__WEBSERVER__BASE_URL") or "http://localhost:8085"
             base_url = base_url.rstrip("/")
             log_url = f"{base_url}/dags/{dag_id}/runs/{run_id_encoded}/tasks/{task_id}?try_number={try_number}"
-    
+
     # Hỗ trợ ánh xạ lại port truy cập từ máy host (thay thế localhost thành 127.0.0.1 để Telegram nhận diện là URL hợp lệ)
     if log_url and log_url != "N/A":
         log_url = log_url.replace("localhost:8080", "127.0.0.1:8085")

@@ -1,6 +1,5 @@
-import os
 import sys
-from pyspark.sql import SparkSession
+
 from src.utils.spark_helper import get_spark_session
 
 # Kích hoạt UTF-8 trên Windows để hiển thị tiếng Việt chính xác
@@ -10,7 +9,7 @@ if sys.platform == 'win32':
 def main() -> None:
     """Chạy các quy trình bảo trì định kỳ cho các bảng Apache Iceberg trong Lakehouse storage.
 
-    Thực hiện nén tệp dữ liệu (ghi lại các tệp tin nhỏ), xóa dọn các snapshot cũ (chỉ giữ lại 
+    Thực hiện nén tệp dữ liệu (ghi lại các tệp tin nhỏ), xóa dọn các snapshot cũ (chỉ giữ lại
     snapshot mới nhất), và xóa các tệp mồ côi (orphan files) trên MinIO để tối ưu hóa lưu trữ.
 
     Returns:
@@ -35,9 +34,9 @@ def main() -> None:
     ]
 
     for table in tables:
-        print(f"\n[*] ===================================================")
+        print("\n[*] ===================================================")
         print(f"[*] Đang thực thi các tác vụ bảo trì cho bảng: {table}")
-        print(f"[*] ===================================================")
+        print("[*] ===================================================")
 
         # -----------------------------------------------------------------
         # A. Compaction (Gộp các tệp nhỏ - Optimize)

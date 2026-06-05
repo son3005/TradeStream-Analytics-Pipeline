@@ -1,9 +1,11 @@
 import os
 import sys
-from pyspark.sql import SparkSession, DataFrame
+
 import pyspark.sql.functions as F
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType
+from pyspark.sql import DataFrame
+from pyspark.sql.types import DoubleType, LongType, StringType, StructField, StructType
 from pyspark.sql.window import Window
+
 from src.utils.spark_helper import get_spark_session
 
 # Đảm bảo mã hóa ký tự UTF-8 được kích hoạt trên Windows
@@ -30,24 +32,24 @@ def calculate_daily_ohlcv(df_with_date: DataFrame) -> DataFrame:
     """Gom nhóm dữ liệu ticks theo symbol và fetch_date để tính toán nến ngày OHLCV.
 
     Args:
-        df_with_date (DataFrame): DataFrame đầu vào chứa các cột symbol, price, quantity, 
+        df_with_date (DataFrame): DataFrame đầu vào chứa các cột symbol, price, quantity,
                                   trade_time, và fetch_date.
 
     Returns:
-        DataFrame: DataFrame kết quả chứa các cột: symbol, fetch_date, open_price, 
+        DataFrame: DataFrame kết quả chứa các cột: symbol, fetch_date, open_price,
                    high_price, low_price, close_price, và volume.
     """
     # Định nghĩa Window để lấy giá Open và Close chính xác theo thời gian giao dịch
     window_asc = Window.partitionBy("symbol", "fetch_date").orderBy("trade_time")
     window_desc = Window.partitionBy("symbol", "fetch_date").orderBy(F.col("trade_time").desc())
-    
+
     # Thêm các cột Open/Close tạm thời cho mỗi giao dịch dựa trên window
     df_ohlcv_temp = (
         df_with_date
         .withColumn("first_price", F.first("price").over(window_asc))
         .withColumn("last_price", F.first("price").over(window_desc))
     )
-    
+
     # Gom nhóm theo mã tài sản và ngày để tính toán các chỉ số OHLCV thực tế
     return (
         df_ohlcv_temp
@@ -96,8 +98,8 @@ def main() -> None:
     """Biến đổi dữ liệu thô từ tầng Bronze sang nến ngày tầng Silver (Apache Iceberg).
 
     Đọc dữ liệu ticks thô dạng JSON trong Bronze Layer, lọc các dòng dữ liệu không hợp lệ,
-    gom nhóm dữ liệu ticks theo ngày để tính các chỉ số nến ngày OHLCV (Open, High, Low, 
-    Close, Volume), tính chỉ báo kỹ thuật ngày (Daily Return, Price Range) bằng Window 
+    gom nhóm dữ liệu ticks theo ngày để tính các chỉ số nến ngày OHLCV (Open, High, Low,
+    Close, Volume), tính chỉ báo kỹ thuật ngày (Daily Return, Price Range) bằng Window
     Functions, JOIN với dim_date và lưu vào bảng fact_daily_prices bằng cơ chế MERGE INTO.
 
     Returns:
@@ -120,9 +122,9 @@ def main() -> None:
         # =====================================================================
         bronze_path = f"s3a://{MINIO_BUCKET}/bronze/raw_trades"
         print(f"[*] Bước 1: Đọc tệp JSON thô từ Bronze Layer: {bronze_path}")
-        
+
         raw_df = spark.read.json(bronze_path)
-        
+
         # Nếu thư mục Bronze trống trơn, dừng job
         if "value" not in raw_df.columns:
             print("[NOTE] Tầng Bronze chưa có dữ liệu giao dịch nào. Đang thoát job...")
@@ -142,13 +144,13 @@ def main() -> None:
         # 6. GOM NHÓM VÀ TÍNH TOÁN DAILY OHLCV BẰNG WINDOW FUNCTIONS
         # =====================================================================
         print("[*] Bước 2: Gom nhóm Ticks thành dữ liệu nến ngày (Daily OHLCV)...")
-        
+
         # Chuyển đổi trade_time (ms) sang Định dạng ngày DateType
         df_with_date = parsed_df.withColumn(
-            "fetch_date", 
+            "fetch_date",
             F.to_date(F.from_unixtime(F.col("trade_time") / 1000))
         )
-        
+
         dedup_df = calculate_daily_ohlcv(df_with_date)
 
         # =====================================================================
@@ -192,7 +194,7 @@ def main() -> None:
             MERGE INTO lakehouse.trading.fact_daily_prices target
             USING temp_silver_prices source
             ON target.symbol = source.symbol AND target.date_key = source.date_key
-            WHEN MATCHED THEN UPDATE SET 
+            WHEN MATCHED THEN UPDATE SET
                 open_price = source.open_price,
                 high_price = source.high_price,
                 low_price = source.low_price,

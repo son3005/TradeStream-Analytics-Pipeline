@@ -1,6 +1,6 @@
 # ============================================================
 # FILE: docker_spark_operator.py
-# MỤC ĐÍCH: Custom Airflow Operator và Trigger để chạy Spark Job 
+# MỤC ĐÍCH: Custom Airflow Operator và Trigger để chạy Spark Job
 #            ở chế độ không đồng bộ (Deferrable Mode)
 # ============================================================
 
@@ -8,11 +8,11 @@ import asyncio
 import logging
 import subprocess
 import uuid
-from typing import Dict, Any, Optional, Sequence
-from airflow.models import BaseOperator
-from airflow.triggers.base import BaseTrigger, TriggerEvent
+from typing import Any, Dict, Optional, Sequence
+
 from airflow.hooks.base import BaseHook
-from airflow.models import Variable
+from airflow.models import BaseOperator, Variable
+from airflow.triggers.base import BaseTrigger, TriggerEvent
 
 logger = logging.getLogger("airflow.task")
 
@@ -38,7 +38,7 @@ async def run_command_async(cmd: Sequence[str]) -> tuple[int, str, str]:
 
 class DockerSparkJobTrigger(BaseTrigger):
     """Trigger kiểm tra trạng thái của Spark job không đồng bộ bằng cách kiểm tra file status.
-    
+
     Attributes:
         container_name (str): Tên container Docker chạy Spark Master.
         status_file (str): Đường dẫn đến tệp lưu trạng thái exit code của Spark job.
@@ -81,7 +81,7 @@ class DockerSparkJobTrigger(BaseTrigger):
                     # File status đã tồn tại, đọc exit code
                     exit_code = int(out.strip())
                     yield TriggerEvent({
-                        "status": "complete", 
+                        "status": "complete",
                         "exit_code": exit_code,
                         "status_file": self.status_file,
                         "log_file": self.log_file
@@ -89,7 +89,7 @@ class DockerSparkJobTrigger(BaseTrigger):
                     return
             except Exception as e:
                 logger.error(f"Lỗi khi kiểm tra file status của Spark: {e}")
-            
+
             await asyncio.sleep(self.poll_interval)
 
 class DockerSparkSubmitOperator(BaseOperator):

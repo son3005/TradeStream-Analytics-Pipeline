@@ -13,4 +13,4 @@ line-length = 120
 
 [lint]
 select = ["E", "F", "W", "I"] # Pycodestyle (E, W), Pyflakes (F), Isort (I)
-ignore = []
+ignore = ["E501"]

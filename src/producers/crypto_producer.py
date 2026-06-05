@@ -1,13 +1,13 @@
 import asyncio
-import websockets
 import json
 import logging
 import os
 import sys
-import time
+from typing import Dict, List, Optional, Tuple
+
+import websockets
+from confluent_kafka import KafkaError, Message, Producer
 from dotenv import load_dotenv
-from confluent_kafka import Producer, KafkaError, Message
-from typing import Tuple, List, Dict, Optional, Any
 
 # 1. Cấu hình logging chuyên nghiệp
 logging.basicConfig(
@@ -63,10 +63,10 @@ def load_crypto_symbols() -> Tuple[List[str], Dict[str, str]]:
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
-        
+
         crypto_symbols = []
         symbol_map = {}  # Map BTCUSDT -> BTC-USD
-        
+
         for item in config.get('symbols', []):
             if item.get('type') == 'crypto':
                 std_symbol = item['symbol']  # VD: BTC-USD
@@ -74,7 +74,7 @@ def load_crypto_symbols() -> Tuple[List[str], Dict[str, str]]:
                 binance_symbol = std_symbol.replace('-USD', 'USDT')
                 crypto_symbols.append(binance_symbol)
                 symbol_map[binance_symbol] = std_symbol
-                
+
         return crypto_symbols, symbol_map
     except Exception as e:
         logger.error(f"❌ Lỗi đọc file symbols.json: {e}")
@@ -88,30 +88,30 @@ async def stream_crypto_data() -> None:
         None
     """
     binance_symbols, symbol_map = load_crypto_symbols()
-    
+
     # Xây dựng Combined Stream URL
     # Format: wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade
     streams = "/".join([f"{sym.lower()}@trade" for sym in binance_symbols])
     wss_url = f"{BINANCE_WSS_URL}?streams={streams}"
 
-    
+
     logger.info(f"Đang kết nối tới Binance Multi-Stream: {wss_url}...")
     logger.info(f"Đẩy dữ liệu tới Kafka Broker: {KAFKA_BROKER_URL}, Topic: {KAFKA_TOPIC}")
-    
+
     async with websockets.connect(wss_url) as ws:
         while True:
             response = await ws.recv()
             data = json.loads(response)
-            
+
             # Với combined stream, data nhận về có cấu trúc {"stream": "...", "data": {...}}
             trade_data = data.get('data', data)
             raw_symbol = trade_data.get('s')  # VD: BTCUSDT
-            
+
             if not raw_symbol or raw_symbol not in symbol_map:
                 continue
-                
+
             std_symbol = symbol_map[raw_symbol]
-            
+
             # Định nghĩa Schema dữ liệu thô (Flat trade schema)
             kafka_message = {
                 'symbol': std_symbol,                     # Chuẩn hóa về BTC-USD
@@ -119,7 +119,7 @@ async def stream_crypto_data() -> None:
                 'quantity': float(trade_data['q']),        # Khối lượng
                 'trade_time': int(trade_data['T'])         # Timestamp (ms)
             }
-            
+
             # Gửi dữ liệu vào Kafka
             producer.produce(
                 topic=KAFKA_TOPIC,
@@ -128,7 +128,7 @@ async def stream_crypto_data() -> None:
                 callback=delivery_report
             )
             producer.poll(0)
-            
+
             logger.info(f"💰 [Crypto] Kafka <- {std_symbol}: {kafka_message['price']} USD (Vol: {kafka_message['quantity']})")
 
 async def run_resilient_producer() -> None:

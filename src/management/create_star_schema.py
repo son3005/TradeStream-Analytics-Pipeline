@@ -1,14 +1,11 @@
-import os
-import json
-from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType
 from src.utils.spark_helper import get_spark_session
+
 
 def main() -> None:
     """Khởi tạo mô hình dữ liệu hình sao (Star Schema) cho Data Lakehouse.
 
-    Tạo schema 'trading', các bảng Apache Iceberg: dim_assets, dim_date, 
-    và fact_daily_prices trên MinIO. Nạp dữ liệu ban đầu cho các bảng 
+    Tạo schema 'trading', các bảng Apache Iceberg: dim_assets, dim_date,
+    và fact_daily_prices trên MinIO. Nạp dữ liệu ban đầu cho các bảng
     chiều thông tin (dimensions) từ các tệp cấu hình nguồn.
 
     Returns:
@@ -25,7 +22,7 @@ def main() -> None:
         # 1. Tạo Namespace (Database)
         print("[*] Creating database namespace 'trading'...")
         spark.sql("CREATE NAMESPACE IF NOT EXISTS lakehouse.trading")
-        
+
         # 2. Tạo bảng dim_assets phân vùng theo asset_type
         print("[*] Creating Iceberg table: dim_assets...")
         spark.sql("""
@@ -37,7 +34,7 @@ def main() -> None:
             ) USING iceberg
             PARTITIONED BY (asset_type)
         """)
-        
+
         # 3. Tạo bảng dim_date phân vùng theo year
         print("[*] Creating Iceberg table: dim_date...")
         spark.sql("""
@@ -55,7 +52,7 @@ def main() -> None:
             ) USING iceberg
             PARTITIONED BY (year)
         """)
-        
+
         print("[*] Creating Iceberg table: fact_daily_prices...")
         spark.sql("""
             CREATE TABLE IF NOT EXISTS lakehouse.trading.fact_daily_prices (
@@ -72,15 +69,15 @@ def main() -> None:
             PARTITIONED BY (symbol)
         """)
         print("[SUCCESS] All tables created successfully!")
-        
+
         # 5. Nạp dữ liệu từ file dim_date.csv trên MinIO vào bảng dim_date Iceberg
         print("[*] Checking dim_date data status...")
         date_count = spark.sql("SELECT COUNT(*) FROM lakehouse.trading.dim_date").collect()[0][0]
-        
+
         if date_count == 0:
             print("[*] Loading dim_date.csv from local container storage...")
             csv_path = "/opt/airflow/src/management/dim_date.csv"
-            
+
             # Đọc CSV từ MinIO
             date_df = (
                 spark.read
@@ -88,7 +85,7 @@ def main() -> None:
                 .option("inferSchema", "true")
                 .csv(csv_path)
             )
-            
+
             # Ghi vào bảng Iceberg dim_date
             print("[*] Writing records to Iceberg dim_date table...")
             (
@@ -97,25 +94,25 @@ def main() -> None:
                 .mode("append")
                 .save("lakehouse.trading.dim_date")
             )
-            
+
             new_count = spark.sql("SELECT COUNT(*) FROM lakehouse.trading.dim_date").collect()[0][0]
             print(f"[SUCCESS] Successfully loaded {new_count} records into dim_date table!")
         else:
             print(f"[NOTE] dim_date table already has {date_count} records. Skipping data load.")
-        
+
         # 6. Nạp dữ liệu từ file symbols.json vào bảng dim_assets Iceberg
         print("[*] Checking dim_assets data status...")
         asset_count = spark.sql("SELECT COUNT(*) FROM lakehouse.trading.dim_assets").collect()[0][0]
-        
+
         if asset_count == 0:
             print("[*] Loading symbols.json from config...")
             import json
             # Đường dẫn mount trong container
             config_path = "/opt/airflow/config/symbols.json"
-            
+
             with open(config_path, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
-            
+
             # Map dữ liệu thành danh sách các dictionary khớp với schema dim_assets
             asset_rows = []
             for item in config_data.get("symbols", []):
@@ -125,19 +122,19 @@ def main() -> None:
                     "asset_type": item["type"],  # map 'type' từ json sang 'asset_type' của bảng
                     "currency": "USD"            # Mặc định là USD
                 })
-            
+
             # Tạo Schema cho DataFrame
-            from pyspark.sql.types import StructType, StructField, StringType
+            from pyspark.sql.types import StringType, StructField, StructType
             schema = StructType([
                 StructField("symbol", StringType(), True),
                 StructField("name", StringType(), True),
                 StructField("asset_type", StringType(), True),
                 StructField("currency", StringType(), True)
             ])
-            
+
             # [CHỖ TRỐNG 1]: Tạo DataFrame từ danh sách asset_rows và schema trên
             asset_df = spark.createDataFrame(asset_rows, schema=schema)
-            
+
             # [CHỖ TRỐNG 2]: Ghi DataFrame vào bảng Iceberg 'lakehouse.trading.dim_assets'
             print("[*] Writing records to Iceberg dim_assets table...")
             (
@@ -146,7 +143,7 @@ def main() -> None:
                 .mode("append")
                 .save("lakehouse.trading.dim_assets")
             )
-            
+
             new_asset_count = spark.sql("SELECT COUNT(*) FROM lakehouse.trading.dim_assets").collect()[0][0]
             print(f"[SUCCESS] Successfully loaded {new_asset_count} assets into dim_assets table!")
         else:
@@ -155,7 +152,7 @@ def main() -> None:
 
 
         print("[SUCCESS] All Star Schema tables created successfully in Apache Iceberg!")
-        
+
     except Exception as e:
         print(f"[X] Error creating Star Schema: {e}")
     finally:

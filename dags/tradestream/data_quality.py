@@ -4,13 +4,15 @@
 #            bằng Great Expectations và kích hoạt cảnh báo Telegram khi lỗi
 # ============================================================
 
-import os
 import logging
+import os
 from datetime import datetime, timedelta
+
 import pandas as pd
-from sqlalchemy import create_engine
 from airflow.decorators import dag, task
+from sqlalchemy import create_engine
 from tradestream.utils.alerts import send_telegram_alert
+
 from src.utils.data_quality_helper import DataQualityChecker
 
 # Import Asset theo cơ chế tương thích ngược cho Airflow 3.x và 2.x
@@ -42,7 +44,7 @@ default_args = {
     max_active_runs=1,
 )
 def tradestream_data_quality_pipeline() -> None:
-    
+
     @task(
         task_id="run_data_quality_check",
         inlets=[Asset("postgres://timescaledb:5432/tradestream/public/daily_prices")]
@@ -68,21 +70,21 @@ def tradestream_data_quality_pipeline() -> None:
 
         logger.info("Đang nạp dữ liệu từ TimescaleDB...")
         engine = create_engine(conn_str)
-        
+
         # Load dữ liệu trong vòng 2 ngày để bao quát dữ liệu mới đồng bộ
         query = "SELECT * FROM daily_prices WHERE fetch_date >= CURRENT_DATE - INTERVAL '2 days'"
         df = pd.read_sql(query, engine)
-        
+
         if df.empty:
             logger.warning("Không có dữ liệu mới trong 2 ngày qua để kiểm định.")
             return "No new data to check."
-            
+
         checker = DataQualityChecker()
         result = checker.run_validation(df)
-        
+
         if not result["success"]:
             raise ValueError(f"Kiểm định chất lượng dữ liệu thất bại! Tóm tắt: {result['summary']}")
-            
+
         logger.info("Kiểm định chất lượng dữ liệu thành công!")
         return result["summary"]
 

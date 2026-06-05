@@ -7,14 +7,14 @@
 # ---- BƯỚC 1: Import các thư viện cần thiết ----
 
 # "DAG" là class chính — đại diện cho 1 bản kế hoạch
+# "datetime" để khai báo ngày bắt đầu chạy DAG
+from datetime import datetime
+
 from airflow import DAG
 
 # "BashOperator" là loại công nhân chạy lệnh terminal
 # Airflow 3.x chuyển sang package providers (đường dẫn import mới)
 from airflow.providers.standard.operators.bash import BashOperator
-
-# "datetime" để khai báo ngày bắt đầu chạy DAG
-from datetime import datetime
 
 # ---- BƯỚC 2: Khai báo DAG (Bản kế hoạch) ----
 

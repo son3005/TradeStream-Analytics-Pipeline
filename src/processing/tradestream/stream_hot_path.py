@@ -1,9 +1,11 @@
 import os
 import sys
-from pyspark.sql import SparkSession, DataFrame
+
 import pyspark.sql.functions as F
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType
-from src.utils.spark_helper import get_spark_session, get_db_credentials
+from pyspark.sql import DataFrame
+from pyspark.sql.types import DoubleType, LongType, StringType, StructField, StructType
+
+from src.utils.spark_helper import get_db_credentials, get_spark_session
 
 # Kich hoat che do ma hoa ky tu UTF-8 cho Windows de logs hien thi tieng Viet chinh xac
 if sys.platform == 'win32':
@@ -17,7 +19,7 @@ KAFKA_TOPICS: str = "stock_trades,crypto_trades"
 def get_tick_schema() -> StructType:
     """
     Dinh nghia cau truc schema cua Spark DataFrame de parse payload JSON tu Kafka.
-    
+
     Returns:
         StructType: Schema mo ta truong du lieu cua moi tick giao dich.
     """
@@ -30,16 +32,16 @@ def get_tick_schema() -> StructType:
 
 def write_to_timescale(batch_df: DataFrame, batch_id: int) -> None:
     """
-    Ghi micro-batch hien tai vao database TimescaleDB bang cach su dung 
+    Ghi micro-batch hien tai vao database TimescaleDB bang cach su dung
     bang Staging tam thoi va thuc hien native UPSERT (ON CONFLICT DO UPDATE).
-    
+
     Args:
         batch_df (DataFrame): DataFrame chua ket qua window aggregation cua micro-batch.
         batch_id (int): ID duy nhat cua micro-batch do Spark cung cap.
-        
+
     Returns:
         None
-        
+
     Raises:
         Exception: Neu loi mo ket noi JDBC hoac thuc thi native SQL UPSERT.
     """
@@ -87,10 +89,10 @@ def write_to_timescale(batch_df: DataFrame, batch_id: int) -> None:
         # 2. Dung JVM connection truc tiep tu Spark Driver de thuc hien native UPSERT
         jvm = batch_df.sparkSession._jvm
         conn = jvm.java.sql.DriverManager.getConnection(JDBC_URL, DB_USER, DB_PASS)
-        
+
         try:
             stmt = conn.createStatement()
-            
+
             # Thuc thi cau lenh INSERT ... ON CONFLICT cua Postgres
             # Neu symbol va window_start da ton tai, update sma, vwap va trade_count moi nhat
             upsert_query = f"""
@@ -104,7 +106,7 @@ def write_to_timescale(batch_df: DataFrame, batch_id: int) -> None:
                     trade_count = EXCLUDED.trade_count
             """
             stmt.execute(upsert_query)
-            
+
             # Xoa bang staging tam thoi
             stmt.execute(f"DROP TABLE IF EXISTS {staging_table}")
             stmt.close()
@@ -118,10 +120,10 @@ def main() -> None:
     """
     Job Structured Streaming chinh: doc tu Kafka, parse JSON, ap dung Watermark
     va Sliding Window, thuc hien tinh toan SMA & VWAP, roi goi sink foreachBatch.
-    
+
     Returns:
         None
-        
+
     Raises:
         Exception: Neu gap loi bat dau luong streaming hoac cau hinh checkpoint.
     """

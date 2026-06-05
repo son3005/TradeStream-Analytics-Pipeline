@@ -1,13 +1,14 @@
 import asyncio
-import aiohttp
 import json
 import logging
 import os
 import sys
 import time
+from typing import Any, Dict, List, Optional
+
+import aiohttp
+from confluent_kafka import KafkaError, Message, Producer
 from dotenv import load_dotenv
-from confluent_kafka import Producer, KafkaError, Message
-from typing import List, Dict, Optional, Any
 
 # 1. Cấu hình logging chuyên nghiệp
 logging.basicConfig(
@@ -61,7 +62,7 @@ def load_stock_symbols() -> List[str]:
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
-        
+
         stock_symbols = []
         for item in config.get('symbols', []):
             if item.get('type') == 'stock':
@@ -86,7 +87,7 @@ async def fetch_stock_price(session: aiohttp.ClientSession, symbol: str) -> Opti
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
-    
+
     try:
         async with session.get(url, headers=headers, timeout=5) as response:
             if response.status == 200:
@@ -120,15 +121,15 @@ async def poll_stocks_loop() -> None:
     stock_symbols = load_stock_symbols()
     logger.info(f"Khởi động StockProducer cho danh sách: {stock_symbols}")
     logger.info(f"Đẩy dữ liệu tới Kafka Broker: {KAFKA_BROKER_URL}, Topic: {KAFKA_TOPIC}")
-    
+
     async with aiohttp.ClientSession() as session:
         while True:
             start_time = time.time()
-            
+
             # Chạy concurrent fetch giá cho tất cả các symbol
             tasks = [fetch_stock_price(session, sym) for sym in stock_symbols]
             results = await asyncio.gather(*tasks)
-            
+
             for res in results:
                 if res:
                     # Gửi Kafka
@@ -140,7 +141,7 @@ async def poll_stocks_loop() -> None:
                     )
                     producer.poll(0)
                     logger.info(f"📈 [Stock] Kafka <- {res['symbol']}: {res['price']} USD")
-            
+
             # Điều chỉnh thời gian chờ để vòng lặp đúng chu kỳ 10 giây
             elapsed = time.time() - start_time
             sleep_time = max(10.0 - elapsed, 0.1)

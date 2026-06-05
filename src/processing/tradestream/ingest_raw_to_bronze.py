@@ -1,7 +1,6 @@
 import os
 import sys
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
+
 from src.utils.spark_helper import get_spark_session
 
 if sys.platform == 'win32':
