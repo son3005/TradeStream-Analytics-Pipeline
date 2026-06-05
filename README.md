@@ -318,3 +318,9 @@ Dự án đã được triển khai hoàn tất **100%** từ **Phase 0 đến P
 - **Phase 3-4**: Thiết lập Medallion Lakehouse với MinIO, Apache Iceberg, và Trino Query Engine.
 - **Phase 5-7**: Tích hợp Airflow Orchestration, MLOps (XGBoost/LightGBM + MLflow) và đồng bộ Serving DB.
 - **Phase 8-9**: Cài đặt Data Quality Gate (Great Expectations), Data Lineage (Marquez) và CI/CD hoàn chỉnh (Ruff + pytest + GitHub Actions).
+
+---
+
+## 📄 Giấy phép (License)
+
+Dự án được phân phối dưới giấy phép **Apache License 2.0**. Xem chi tiết tại tệp [LICENSE](file:///e:/DuAn/TradeStream%20Analytics%20Pipeline/LICENSE).
